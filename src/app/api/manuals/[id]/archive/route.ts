@@ -1,10 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  findManualById,
+  updateManual,
+  type D1Manual,
+} from '@/lib/d1'
 import { getPermissionLevel, canEditManual } from '@/lib/permissions'
 
 type RouteContext = {
   params: Promise<{ id: string }>
+}
+
+// D1のマニュアルをcamelCaseに変換
+function toManualResponse(manual: D1Manual) {
+  return {
+    id: manual.id,
+    businessId: manual.business_id,
+    title: manual.title,
+    description: manual.description,
+    status: manual.status,
+    adminOnly: Boolean(manual.admin_only),
+    sortOrder: manual.sort_order,
+    isArchived: Boolean(manual.is_archived),
+    archivedAt: manual.archived_at,
+    version: manual.version,
+    createdBy: manual.created_by,
+    updatedBy: manual.updated_by,
+    createdAt: manual.created_at,
+    updatedAt: manual.updated_at,
+  }
 }
 
 // POST /api/manuals/:id/archive - マニュアルをアーカイブ
@@ -21,9 +45,7 @@ export async function POST(
     const { id: manualId } = await context.params
 
     // マニュアルを取得
-    const manual = await prisma.manual.findUnique({
-      where: { id: manualId },
-    })
+    const manual = await findManualById(manualId)
 
     if (!manual) {
       return NextResponse.json(
@@ -33,7 +55,7 @@ export async function POST(
     }
 
     // 権限確認
-    const level = await getPermissionLevel(session.user.id, manual.businessId)
+    const level = await getPermissionLevel(session.user.id, manual.business_id)
 
     if (!canEditManual(level)) {
       return NextResponse.json(
@@ -43,7 +65,7 @@ export async function POST(
     }
 
     // すでにアーカイブ済みの場合
-    if (manual.isArchived) {
+    if (manual.is_archived) {
       return NextResponse.json(
         { error: 'このマニュアルはすでにアーカイブされています' },
         { status: 400 }
@@ -51,16 +73,20 @@ export async function POST(
     }
 
     // アーカイブ
-    const updatedManual = await prisma.manual.update({
-      where: { id: manualId },
-      data: {
-        isArchived: true,
-        archivedAt: new Date(),
-        updatedBy: session.user.id,
-      },
+    const updatedManual = await updateManual(manualId, {
+      is_archived: true,
+      archived_at: new Date().toISOString(),
+      updated_by: session.user.id,
     })
 
-    return NextResponse.json(updatedManual)
+    if (!updatedManual) {
+      return NextResponse.json(
+        { error: 'マニュアルのアーカイブに失敗しました' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(toManualResponse(updatedManual))
   } catch (error) {
     console.error('Failed to archive manual:', error)
     return NextResponse.json(
@@ -84,9 +110,7 @@ export async function DELETE(
     const { id: manualId } = await context.params
 
     // マニュアルを取得
-    const manual = await prisma.manual.findUnique({
-      where: { id: manualId },
-    })
+    const manual = await findManualById(manualId)
 
     if (!manual) {
       return NextResponse.json(
@@ -96,7 +120,7 @@ export async function DELETE(
     }
 
     // 権限確認
-    const level = await getPermissionLevel(session.user.id, manual.businessId)
+    const level = await getPermissionLevel(session.user.id, manual.business_id)
 
     if (!canEditManual(level)) {
       return NextResponse.json(
@@ -106,7 +130,7 @@ export async function DELETE(
     }
 
     // アーカイブされていない場合
-    if (!manual.isArchived) {
+    if (!manual.is_archived) {
       return NextResponse.json(
         { error: 'このマニュアルはアーカイブされていません' },
         { status: 400 }
@@ -114,16 +138,20 @@ export async function DELETE(
     }
 
     // 復元
-    const updatedManual = await prisma.manual.update({
-      where: { id: manualId },
-      data: {
-        isArchived: false,
-        archivedAt: null,
-        updatedBy: session.user.id,
-      },
+    const updatedManual = await updateManual(manualId, {
+      is_archived: false,
+      archived_at: null,
+      updated_by: session.user.id,
     })
 
-    return NextResponse.json(updatedManual)
+    if (!updatedManual) {
+      return NextResponse.json(
+        { error: 'マニュアルの復元に失敗しました' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(toManualResponse(updatedManual))
   } catch (error) {
     console.error('Failed to restore manual:', error)
     return NextResponse.json(

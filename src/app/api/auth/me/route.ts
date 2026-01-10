@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import type { FontSize } from '@prisma/client'
+import { findUserById, updateUser, findBusinessAccessesByUser, type D1FontSize } from '@/lib/d1'
 
 // GET /api/auth/me - 現在のユーザー情報を取得
 export async function GET() {
@@ -11,35 +10,33 @@ export async function GET() {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        isSuperAdmin: true,
-        avatarUrl: true,
-        fontSize: true,
-        businessAccess: {
-          include: {
-            business: {
-              select: {
-                id: true,
-                name: true,
-                displayNameLine1: true,
-                displayNameLine2: true,
-              },
-            },
-          },
-        },
-      },
-    })
+    const user = await findUserById(session.user.id)
 
     if (!user) {
       return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 })
     }
 
-    return NextResponse.json(user)
+    const accesses = await findBusinessAccessesByUser(session.user.id)
+
+    return NextResponse.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      isSuperAdmin: Boolean(user.is_super_admin),
+      avatarUrl: user.avatar_url,
+      fontSize: user.font_size,
+      businessAccess: accesses.map((access) => ({
+        id: access.id,
+        businessId: access.business_id,
+        role: access.role,
+        business: {
+          id: access.business.id,
+          name: access.business.name,
+          displayNameLine1: access.business.display_name_line1,
+          displayNameLine2: access.business.display_name_line2,
+        },
+      })),
+    })
   } catch (error) {
     console.error('Failed to fetch user:', error)
     return NextResponse.json(
@@ -62,7 +59,7 @@ export async function PATCH(request: NextRequest) {
 
     // 文字サイズの検証
     if (fontSize !== undefined) {
-      const validFontSizes: FontSize[] = ['SMALL', 'MEDIUM', 'LARGE']
+      const validFontSizes: D1FontSize[] = ['SMALL', 'MEDIUM', 'LARGE']
       if (!validFontSizes.includes(fontSize)) {
         return NextResponse.json(
           { error: '無効な文字サイズです' },
@@ -71,24 +68,24 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const user = await prisma.user.update({
-      where: { id: session.user.id },
-      data: {
-        ...(fontSize !== undefined && { fontSize }),
-        ...(name !== undefined && { name }),
-        ...(avatarUrl !== undefined && { avatarUrl }),
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        isSuperAdmin: true,
-        avatarUrl: true,
-        fontSize: true,
-      },
+    const user = await updateUser(session.user.id, {
+      ...(fontSize !== undefined && { font_size: fontSize }),
+      ...(name !== undefined && { name }),
+      ...(avatarUrl !== undefined && { avatar_url: avatarUrl }),
     })
 
-    return NextResponse.json(user)
+    if (!user) {
+      return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 })
+    }
+
+    return NextResponse.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      isSuperAdmin: Boolean(user.is_super_admin),
+      avatarUrl: user.avatar_url,
+      fontSize: user.font_size,
+    })
   } catch (error) {
     console.error('Failed to update user:', error)
     return NextResponse.json(

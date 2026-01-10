@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  getUserAdminAccess,
+  getActiveBusinessIds,
+  getSessionStatsByUser,
+  getSessionStatsByManual,
+  getCompletedSessionsByUser,
+  getCompletedSessionsByManual,
+  getUsersWithWorkSessions,
+  getManualsWithWorkSessions,
+  findUserById,
+  findManualById,
+} from '@/lib/d1'
 
 // GET /api/analytics/work-sessions - 作業セッション統計を取得
 export async function GET(request: NextRequest) {
@@ -11,23 +22,14 @@ export async function GET(request: NextRequest) {
     }
 
     // 管理者権限を確認
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        isSuperAdmin: true,
-        businessAccess: {
-          where: { role: 'ADMIN' },
-          select: { businessId: true },
-        },
-      },
-    })
+    const user = await getUserAdminAccess(session.user.id)
 
     if (!user) {
       return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 })
     }
 
     // 管理者でなければアクセス不可
-    if (!user.isSuperAdmin && user.businessAccess.length === 0) {
+    if (!user.is_super_admin && user.admin_business_ids.length === 0) {
       return NextResponse.json(
         { error: '統計情報を閲覧する権限がありません' },
         { status: 403 }
@@ -44,15 +46,11 @@ export async function GET(request: NextRequest) {
 
     // アクセス可能な事業IDを取得
     let accessibleBusinessIds: string[] = []
-    if (user.isSuperAdmin) {
+    if (user.is_super_admin) {
       // スーパー管理者は全事業
-      const allBusinesses = await prisma.business.findMany({
-        where: { isActive: true },
-        select: { id: true },
-      })
-      accessibleBusinessIds = allBusinesses.map((b) => b.id)
+      accessibleBusinessIds = await getActiveBusinessIds()
     } else {
-      accessibleBusinessIds = user.businessAccess.map((a) => a.businessId)
+      accessibleBusinessIds = user.admin_business_ids
     }
 
     // 特定の事業IDが指定されている場合、アクセス権を確認
@@ -70,128 +68,91 @@ export async function GET(request: NextRequest) {
     }
 
     // 日付フィルター
-    const dateFilter: { gte?: Date; lte?: Date } = {}
-    if (startDate) {
-      dateFilter.gte = new Date(startDate)
-    }
+    const filters: {
+      userId?: string
+      manualId?: string
+      startDate?: string
+      endDate?: string
+    } = {}
+
+    if (userId) filters.userId = userId
+    if (manualId) filters.manualId = manualId
+    if (startDate) filters.startDate = startDate
     if (endDate) {
       const end = new Date(endDate)
       end.setHours(23, 59, 59, 999)
-      dateFilter.lte = end
-    }
-
-    // 基本クエリ条件
-    const baseWhere = {
-      manual: {
-        businessId: { in: targetBusinessIds },
-      },
-      ...(Object.keys(dateFilter).length > 0 && { startedAt: dateFilter }),
-      ...(userId && { userId }),
-      ...(manualId && { manualId }),
+      filters.endDate = end.toISOString()
     }
 
     // ユーザー別統計
-    const userStats = await prisma.workSession.groupBy({
-      by: ['userId'],
-      where: baseWhere,
-      _count: { id: true },
-    })
+    const userStats = await getSessionStatsByUser(targetBusinessIds, filters)
 
     const userDetails = await Promise.all(
       userStats.map(async (stat) => {
-        const userInfo = await prisma.user.findUnique({
-          where: { id: stat.userId },
-          select: { id: true, name: true, email: true },
-        })
-        const completedUserSessions = await prisma.workSession.findMany({
-          where: { ...baseWhere, userId: stat.userId, status: 'COMPLETED' },
-          select: { startedAt: true, completedAt: true },
-        })
+        const userInfo = await findUserById(stat.user_id)
+        const completedSessions = await getCompletedSessionsByUser(
+          targetBusinessIds,
+          stat.user_id,
+          { manualId: filters.manualId, startDate: filters.startDate, endDate: filters.endDate }
+        )
 
         // ユーザーの平均作業時間を計算
         let avgDurationMinutes = 0
-        if (completedUserSessions.length > 0) {
-          const totalDuration = completedUserSessions.reduce((acc, s) => {
-            if (s.completedAt) {
-              return acc + (s.completedAt.getTime() - s.startedAt.getTime())
+        if (completedSessions.length > 0) {
+          const totalDuration = completedSessions.reduce((acc, s) => {
+            if (s.completed_at) {
+              return acc + (new Date(s.completed_at).getTime() - new Date(s.started_at).getTime())
             }
             return acc
           }, 0)
-          avgDurationMinutes = Math.round(totalDuration / completedUserSessions.length / 1000 / 60)
+          avgDurationMinutes = Math.round(totalDuration / completedSessions.length / 1000 / 60)
         }
 
         return {
-          user: userInfo,
-          totalSessions: stat._count.id,
+          user: userInfo ? { id: userInfo.id, name: userInfo.name, email: userInfo.email } : null,
+          totalSessions: stat.session_count,
           averageDurationMinutes: avgDurationMinutes,
         }
       })
     )
 
     // マニュアル別統計
-    const manualStats = await prisma.workSession.groupBy({
-      by: ['manualId'],
-      where: baseWhere,
-      _count: { id: true },
-    })
+    const manualStats = await getSessionStatsByManual(targetBusinessIds, filters)
 
     const manualDetails = await Promise.all(
       manualStats.map(async (stat) => {
-        const manual = await prisma.manual.findUnique({
-          where: { id: stat.manualId },
-          select: { id: true, title: true, businessId: true },
-        })
-        const completedManualSessions = await prisma.workSession.findMany({
-          where: { ...baseWhere, manualId: stat.manualId, status: 'COMPLETED' },
-          select: { startedAt: true, completedAt: true },
-        })
+        const manual = await findManualById(stat.manual_id)
+        const completedSessions = await getCompletedSessionsByManual(
+          targetBusinessIds,
+          stat.manual_id,
+          { userId: filters.userId, startDate: filters.startDate, endDate: filters.endDate }
+        )
 
         // マニュアルの平均作業時間を計算
         let avgDurationMinutes = 0
-        if (completedManualSessions.length > 0) {
-          const totalDuration = completedManualSessions.reduce((acc, s) => {
-            if (s.completedAt) {
-              return acc + (s.completedAt.getTime() - s.startedAt.getTime())
+        if (completedSessions.length > 0) {
+          const totalDuration = completedSessions.reduce((acc, s) => {
+            if (s.completed_at) {
+              return acc + (new Date(s.completed_at).getTime() - new Date(s.started_at).getTime())
             }
             return acc
           }, 0)
-          avgDurationMinutes = Math.round(totalDuration / completedManualSessions.length / 1000 / 60)
+          avgDurationMinutes = Math.round(totalDuration / completedSessions.length / 1000 / 60)
         }
 
         return {
-          manual,
-          totalSessions: stat._count.id,
+          manual: manual ? { id: manual.id, title: manual.title, businessId: manual.business_id } : null,
+          totalSessions: stat.session_count,
           averageDurationMinutes: avgDurationMinutes,
         }
       })
     )
 
     // フィルター用のユーザー一覧を取得
-    const allUsers = await prisma.user.findMany({
-      where: {
-        workSessions: {
-          some: {
-            manual: {
-              businessId: { in: targetBusinessIds },
-            },
-          },
-        },
-      },
-      select: { id: true, name: true, email: true },
-      orderBy: { name: 'asc' },
-    })
+    const allUsers = await getUsersWithWorkSessions(targetBusinessIds)
 
     // フィルター用のマニュアル一覧を取得
-    const allManuals = await prisma.manual.findMany({
-      where: {
-        businessId: { in: targetBusinessIds },
-        workSessions: {
-          some: {},
-        },
-      },
-      select: { id: true, title: true },
-      orderBy: { title: 'asc' },
-    })
+    const allManuals = await getManualsWithWorkSessions(targetBusinessIds)
 
     return NextResponse.json({
       userStats: userDetails.sort((a, b) => b.totalSessions - a.totalSessions),

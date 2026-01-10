@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { countBlockMemosForUser } from '@/lib/d1'
 
 type RouteContext = {
   params: Promise<{ id: string }>
@@ -20,15 +20,7 @@ export async function GET(
     const { id: blockId } = await context.params
 
     // メモ数をカウント（自分のメモ + 公開メモ）
-    const count = await prisma.blockMemo.count({
-      where: {
-        blockId,
-        OR: [
-          { userId: session.user.id },
-          { visibility: 'PUBLIC' },
-        ],
-      },
-    })
+    const count = await countBlockMemosForUser(blockId, session.user.id)
 
     return NextResponse.json({ count })
   } catch (error) {

@@ -1,5 +1,11 @@
-import { prisma } from '@/lib/prisma'
-import type { Role } from '@prisma/client'
+import {
+  findUserById,
+  findBusinessAccessByUserAndBusiness,
+  findBusinessAccessesByUser,
+  findAllBusinesses,
+  findManualsByBusiness,
+  type D1Role,
+} from '@/lib/d1'
 
 export type PermissionLevel = 'none' | 'worker' | 'admin' | 'superadmin'
 
@@ -10,29 +16,19 @@ export async function getPermissionLevel(
   userId: string,
   businessId: string
 ): Promise<PermissionLevel> {
-  // ユーザー情報を取得
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      isSuperAdmin: true,
-      businessAccess: {
-        where: { businessId },
-        select: { role: true },
-      },
-    },
-  })
+  const user = await findUserById(userId)
 
   if (!user) return 'none'
 
   // スーパー管理者は全事業で最高権限
-  if (user.isSuperAdmin) return 'superadmin'
+  if (user.is_super_admin) return 'superadmin'
 
-  // 事業へのアクセス権がない場合
-  if (user.businessAccess.length === 0) return 'none'
+  // 事業へのアクセス権を確認
+  const access = await findBusinessAccessByUserAndBusiness(userId, businessId)
 
-  // 事業内での権限
-  const role = user.businessAccess[0].role
-  return role === 'ADMIN' ? 'admin' : 'worker'
+  if (!access) return 'none'
+
+  return access.role === 'ADMIN' ? 'admin' : 'worker'
 }
 
 /**
@@ -68,85 +64,80 @@ export function canManageUsers(level: PermissionLevel): boolean {
  * WORKERは公開マニュアルのみ、ADMIN/スーパー管理者は全マニュアルを取得
  */
 export async function getAccessibleBusinesses(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      isSuperAdmin: true,
-      businessAccess: {
-        select: {
-          businessId: true,
-          role: true,
-        },
-      },
-    },
-  })
+  const user = await findUserById(userId)
 
   if (!user) return []
 
   // スーパー管理者は全事業・全マニュアルにアクセス可能
-  if (user.isSuperAdmin) {
-    return prisma.business.findMany({
-      where: { isActive: true },
-      include: {
-        manuals: {
-          where: { isArchived: false },
-          orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            status: true,
-            adminOnly: true,
-            updatedAt: true,
-          },
-        },
-      },
-      orderBy: { sortOrder: 'asc' },
-    })
+  if (user.is_super_admin) {
+    const businesses = await findAllBusinesses()
+
+    // 各事業のマニュアルを取得
+    const result = await Promise.all(
+      businesses.map(async (business) => {
+        const manuals = await findManualsByBusiness(business.id)
+        return {
+          ...business,
+          // D1形式からアプリ形式に変換
+          displayNameLine1: business.display_name_line1,
+          displayNameLine2: business.display_name_line2,
+          sortOrder: business.sort_order,
+          isActive: Boolean(business.is_active),
+          createdAt: business.created_at,
+          updatedAt: business.updated_at,
+          themeColors: business.theme_colors,
+          manuals: manuals.map((m) => ({
+            id: m.id,
+            title: m.title,
+            description: m.description,
+            status: m.status,
+            adminOnly: Boolean(m.admin_only),
+            updatedAt: m.updated_at,
+          })),
+        }
+      })
+    )
+
+    return result
   }
 
-  // 事業ごとの権限をマップ化
-  const businessRoles = new Map(
-    user.businessAccess.map((access) => [access.businessId, access.role])
+  // 事業ごとのアクセス権を取得
+  const accesses = await findBusinessAccessesByUser(userId)
+
+  // アクセス権のある事業とマニュアルを取得
+  const result = await Promise.all(
+    accesses.map(async (access) => {
+      const business = access.business
+      const manuals = await findManualsByBusiness(business.id)
+      const isAdmin = access.role === 'ADMIN'
+
+      // フィルタリング: WORKERは公開かつ管理者限定でないもののみ
+      const filteredManuals = isAdmin
+        ? manuals
+        : manuals.filter((m) => m.status === 'PUBLISHED' && !m.admin_only)
+
+      return {
+        ...business,
+        displayNameLine1: business.display_name_line1,
+        displayNameLine2: business.display_name_line2,
+        sortOrder: business.sort_order,
+        isActive: Boolean(business.is_active),
+        createdAt: business.created_at,
+        updatedAt: business.updated_at,
+        themeColors: business.theme_colors,
+        manuals: filteredManuals.map((m) => ({
+          id: m.id,
+          title: m.title,
+          description: m.description,
+          status: m.status,
+          adminOnly: Boolean(m.admin_only),
+          updatedAt: m.updated_at,
+        })),
+      }
+    })
   )
 
-  // アクセス権のある事業を取得
-  const businesses = await prisma.business.findMany({
-    where: {
-      isActive: true,
-      businessAccess: {
-        some: { userId },
-      },
-    },
-    include: {
-      manuals: {
-        where: { isArchived: false },
-        orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          status: true,
-          adminOnly: true,
-          updatedAt: true,
-        },
-      },
-    },
-    orderBy: { sortOrder: 'asc' },
-  })
-
-  // 各事業のマニュアルを権限に基づいてフィルタリング
-  return businesses.map((business) => {
-    const role = businessRoles.get(business.id)
-    const isAdmin = role === 'ADMIN'
-
-    return {
-      ...business,
-      manuals: isAdmin
-        ? business.manuals // ADMINは全マニュアル
-        : business.manuals.filter((m) => m.status === 'PUBLISHED' && !m.adminOnly), // WORKERは公開かつ管理者限定でないもののみ
-    }
-  })
+  return result
 }
 
 /**
@@ -154,30 +145,22 @@ export async function getAccessibleBusinesses(userId: string) {
  */
 export async function getUserBusinessAccess(userId: string, businessId: string): Promise<{
   hasAccess: boolean
-  role: Role | null
+  role: D1Role | null
   isSuperAdmin: boolean
 }> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      isSuperAdmin: true,
-      businessAccess: {
-        where: { businessId },
-        select: { role: true },
-      },
-    },
-  })
+  const user = await findUserById(userId)
 
   if (!user) {
     return { hasAccess: false, role: null, isSuperAdmin: false }
   }
 
   // スーパー管理者は全事業にアクセス可能
-  if (user.isSuperAdmin) {
+  if (user.is_super_admin) {
     return { hasAccess: true, role: 'ADMIN', isSuperAdmin: true }
   }
 
-  const access = user.businessAccess[0]
+  const access = await findBusinessAccessByUserAndBusiness(userId, businessId)
+
   return {
     hasAccess: !!access,
     role: access?.role || null,

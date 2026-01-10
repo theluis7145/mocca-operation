@@ -1,9 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { findNotificationById, markNotificationAsRead, deleteNotification } from '@/lib/d1'
 
 type RouteContext = {
   params: Promise<{ id: string }>
+}
+
+// D1のsnake_caseからcamelCaseに変換するヘルパー
+function toNotificationResponse(notification: {
+  id: string
+  user_id: string
+  type: string
+  title: string
+  message: string
+  link_url: string | null
+  related_memo_id: string | null
+  related_work_session_id: string | null
+  is_read: number
+  created_at: string
+}) {
+  return {
+    id: notification.id,
+    userId: notification.user_id,
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    linkUrl: notification.link_url,
+    relatedMemoId: notification.related_memo_id,
+    relatedWorkSessionId: notification.related_work_session_id,
+    isRead: notification.is_read === 1,
+    createdAt: notification.created_at,
+  }
 }
 
 // PATCH /api/notifications/:id - 通知を既読にする
@@ -20,9 +47,7 @@ export async function PATCH(
     const { id } = await context.params
 
     // 通知の存在確認と所有権チェック
-    const notification = await prisma.notification.findUnique({
-      where: { id },
-    })
+    const notification = await findNotificationById(id)
 
     if (!notification) {
       return NextResponse.json(
@@ -31,19 +56,19 @@ export async function PATCH(
       )
     }
 
-    if (notification.userId !== session.user.id) {
+    if (notification.user_id !== session.user.id) {
       return NextResponse.json(
         { error: 'この通知にアクセスする権限がありません' },
         { status: 403 }
       )
     }
 
-    const updated = await prisma.notification.update({
-      where: { id },
-      data: { isRead: true },
-    })
+    await markNotificationAsRead(id)
 
-    return NextResponse.json(updated)
+    // 更新後の通知を取得して返す
+    const updated = await findNotificationById(id)
+
+    return NextResponse.json(updated ? toNotificationResponse(updated) : null)
   } catch (error) {
     console.error('Failed to update notification:', error)
     return NextResponse.json(
@@ -67,9 +92,7 @@ export async function DELETE(
     const { id } = await context.params
 
     // 通知の存在確認と所有権チェック
-    const notification = await prisma.notification.findUnique({
-      where: { id },
-    })
+    const notification = await findNotificationById(id)
 
     if (!notification) {
       return NextResponse.json(
@@ -78,16 +101,14 @@ export async function DELETE(
       )
     }
 
-    if (notification.userId !== session.user.id) {
+    if (notification.user_id !== session.user.id) {
       return NextResponse.json(
         { error: 'この通知を削除する権限がありません' },
         { status: 403 }
       )
     }
 
-    await prisma.notification.delete({
-      where: { id },
-    })
+    await deleteNotification(id)
 
     return NextResponse.json({ success: true })
   } catch (error) {

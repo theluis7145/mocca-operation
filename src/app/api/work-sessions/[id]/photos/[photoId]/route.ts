@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  findWorkSessionById,
+  findPhotoRecordById,
+  deletePhotoRecord,
+} from '@/lib/d1'
 
 // DELETE /api/work-sessions/[id]/photos/[photoId] - 写真を削除
 export async function DELETE(
@@ -16,15 +20,13 @@ export async function DELETE(
     const { id: workSessionId, photoId } = await params
 
     // 作業セッションの存在確認と権限チェック
-    const workSession = await prisma.workSession.findUnique({
-      where: { id: workSessionId },
-    })
+    const workSession = await findWorkSessionById(workSessionId)
 
     if (!workSession) {
       return NextResponse.json({ error: '作業セッションが見つかりません' }, { status: 404 })
     }
 
-    if (workSession.userId !== session.user.id) {
+    if (workSession.user_id !== session.user.id) {
       return NextResponse.json({ error: '権限がありません' }, { status: 403 })
     }
 
@@ -33,22 +35,18 @@ export async function DELETE(
     }
 
     // 写真の存在確認
-    const photo = await prisma.photoRecord.findUnique({
-      where: { id: photoId },
-    })
+    const photo = await findPhotoRecordById(photoId)
 
     if (!photo) {
       return NextResponse.json({ error: '写真が見つかりません' }, { status: 404 })
     }
 
-    if (photo.workSessionId !== workSessionId) {
+    if (photo.work_session_id !== workSessionId) {
       return NextResponse.json({ error: '権限がありません' }, { status: 403 })
     }
 
     // 写真を削除
-    await prisma.photoRecord.delete({
-      where: { id: photoId },
-    })
+    await deletePhotoRecord(photoId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -435,6 +435,34 @@ export async function deleteBusinessAccess(id: string): Promise<boolean> {
   return (result.meta?.changes ?? 0) > 0
 }
 
+export async function findBusinessAccessUserIds(businessId: string, excludeUserId?: string): Promise<string[]> {
+  const db = await getD1Database()
+  let query = 'SELECT user_id FROM business_access WHERE business_id = ?'
+  const params: unknown[] = [businessId]
+
+  if (excludeUserId) {
+    query += ' AND user_id != ?'
+    params.push(excludeUserId)
+  }
+
+  const result = await db.prepare(query).bind(...params).all<{ user_id: string }>()
+  return (result.results || []).map(r => r.user_id)
+}
+
+export async function findSuperAdminIds(excludeUserId?: string): Promise<string[]> {
+  const db = await getD1Database()
+  let query = 'SELECT id FROM users WHERE is_super_admin = 1'
+  const params: unknown[] = []
+
+  if (excludeUserId) {
+    query += ' AND id != ?'
+    params.push(excludeUserId)
+  }
+
+  const result = await db.prepare(query).bind(...params).all<{ id: string }>()
+  return (result.results || []).map(r => r.id)
+}
+
 // ========================================
 // Manual CRUD
 // ========================================
@@ -643,6 +671,15 @@ export async function createManualVersion(input: CreateManualVersionInput): Prom
   return (await findManualVersionById(id))!
 }
 
+export async function deleteManualVersion(id: string): Promise<boolean> {
+  const db = await getD1Database()
+  const result = await db
+    .prepare('DELETE FROM manual_versions WHERE id = ?')
+    .bind(id)
+    .run()
+  return (result.meta?.changes ?? 0) > 0
+}
+
 // ========================================
 // Block CRUD
 // ========================================
@@ -653,6 +690,55 @@ export async function findBlockById(id: string): Promise<D1Block | null> {
     .prepare('SELECT * FROM blocks WHERE id = ?')
     .bind(id)
     .first<D1Block>()
+}
+
+export async function findBlockWithManual(id: string): Promise<(D1Block & { manual: D1Manual }) | null> {
+  const db = await getD1Database()
+  const result = await db
+    .prepare(`
+      SELECT b.*, m.id as m_id, m.business_id, m.title as m_title, m.description as m_description,
+             m.status as m_status, m.admin_only as m_admin_only, m.sort_order as m_sort_order,
+             m.is_archived as m_is_archived, m.archived_at as m_archived_at, m.version as m_version,
+             m.created_by as m_created_by, m.updated_by as m_updated_by, m.created_at as m_created_at, m.updated_at as m_updated_at
+      FROM blocks b
+      JOIN manuals m ON b.manual_id = m.id
+      WHERE b.id = ?
+    `)
+    .bind(id)
+    .first<D1Block & {
+      m_id: string; business_id: string; m_title: string; m_description: string | null;
+      m_status: D1Manual['status']; m_admin_only: number; m_sort_order: number;
+      m_is_archived: number; m_archived_at: string | null; m_version: number;
+      m_created_by: string; m_updated_by: string; m_created_at: string; m_updated_at: string
+    }>()
+
+  if (!result) return null
+
+  return {
+    id: result.id,
+    manual_id: result.manual_id,
+    type: result.type,
+    content: result.content,
+    sort_order: result.sort_order,
+    created_at: result.created_at,
+    updated_at: result.updated_at,
+    manual: {
+      id: result.m_id,
+      business_id: result.business_id,
+      title: result.m_title,
+      description: result.m_description,
+      status: result.m_status,
+      admin_only: result.m_admin_only,
+      sort_order: result.m_sort_order,
+      is_archived: result.m_is_archived,
+      archived_at: result.m_archived_at,
+      version: result.m_version,
+      created_by: result.m_created_by,
+      updated_by: result.m_updated_by,
+      created_at: result.m_created_at,
+      updated_at: result.m_updated_at,
+    }
+  }
 }
 
 export async function findBlocksByManual(manualId: string): Promise<D1Block[]> {
@@ -765,6 +851,40 @@ export async function countBlockMemos(blockId: string): Promise<number> {
   return result?.count ?? 0
 }
 
+export async function countBlockMemosForUser(blockId: string, userId: string): Promise<number> {
+  const db = await getD1Database()
+  const result = await db
+    .prepare(`
+      SELECT COUNT(*) as count FROM block_memos
+      WHERE block_id = ? AND (user_id = ? OR visibility = 'PUBLIC')
+    `)
+    .bind(blockId, userId)
+    .first<{ count: number }>()
+  return result?.count ?? 0
+}
+
+export async function findBlockMemosForUser(
+  blockId: string,
+  userId: string
+): Promise<(D1BlockMemo & { user: Pick<D1User, 'id' | 'name'> })[]> {
+  const db = await getD1Database()
+  const result = await db
+    .prepare(`
+      SELECT bm.*, u.id as u_id, u.name as u_name
+      FROM block_memos bm
+      JOIN users u ON bm.user_id = u.id
+      WHERE bm.block_id = ? AND (bm.user_id = ? OR bm.visibility = 'PUBLIC')
+      ORDER BY bm.created_at DESC
+    `)
+    .bind(blockId, userId)
+    .all<D1BlockMemo & { u_id: string; u_name: string }>()
+
+  return (result.results || []).map(row => ({
+    ...row,
+    user: { id: row.u_id, name: row.u_name }
+  }))
+}
+
 export async function createBlockMemo(input: CreateBlockMemoInput): Promise<D1BlockMemo> {
   const db = await getD1Database()
   const id = generateId()
@@ -781,13 +901,54 @@ export async function createBlockMemo(input: CreateBlockMemoInput): Promise<D1Bl
   return (await findBlockMemoById(id))!
 }
 
-export async function updateBlockMemo(id: string, content: string): Promise<D1BlockMemo | null> {
+export async function updateBlockMemo(
+  id: string,
+  updates: { content?: string; visibility?: string }
+): Promise<D1BlockMemo | null> {
   const db = await getD1Database()
+  const setClauses: string[] = []
+  const values: unknown[] = []
+
+  if (updates.content !== undefined) {
+    setClauses.push('content = ?')
+    values.push(updates.content)
+  }
+  if (updates.visibility !== undefined) {
+    setClauses.push('visibility = ?')
+    values.push(updates.visibility)
+  }
+
+  if (setClauses.length === 0) return findBlockMemoById(id)
+
+  setClauses.push('updated_at = ?')
+  values.push(now())
+  values.push(id)
+
   await db
-    .prepare('UPDATE block_memos SET content = ?, updated_at = ? WHERE id = ?')
-    .bind(content, now(), id)
+    .prepare(`UPDATE block_memos SET ${setClauses.join(', ')} WHERE id = ?`)
+    .bind(...values)
     .run()
   return findBlockMemoById(id)
+}
+
+export async function findBlockMemoWithUser(id: string): Promise<(D1BlockMemo & { user: Pick<D1User, 'id' | 'name'> }) | null> {
+  const db = await getD1Database()
+  const result = await db
+    .prepare(`
+      SELECT bm.*, u.id as u_id, u.name as u_name
+      FROM block_memos bm
+      JOIN users u ON bm.user_id = u.id
+      WHERE bm.id = ?
+    `)
+    .bind(id)
+    .first<D1BlockMemo & { u_id: string; u_name: string }>()
+
+  if (!result) return null
+
+  return {
+    ...result,
+    user: { id: result.u_id, name: result.u_name }
+  }
 }
 
 export async function deleteBlockMemo(id: string): Promise<boolean> {
@@ -853,6 +1014,38 @@ export async function createNotification(input: CreateNotificationInput): Promis
     .run()
 
   return (await findNotificationById(id))!
+}
+
+export async function createNotificationsForUsers(
+  userIds: string[],
+  notification: Omit<CreateNotificationInput, 'user_id'>
+): Promise<void> {
+  if (userIds.length === 0) return
+
+  const db = await getD1Database()
+  const timestamp = now()
+
+  const statements = userIds.map(userId => {
+    const id = generateId()
+    return db
+      .prepare(`
+        INSERT INTO notifications (id, user_id, type, title, message, link_url, related_memo_id, related_work_session_id, is_read, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+      `)
+      .bind(
+        id,
+        userId,
+        notification.type,
+        notification.title,
+        notification.message,
+        notification.link_url || null,
+        notification.related_memo_id || null,
+        notification.related_work_session_id || null,
+        timestamp
+      )
+  })
+
+  await db.batch(statements)
 }
 
 export async function markNotificationAsRead(id: string): Promise<boolean> {
@@ -1199,6 +1392,132 @@ export async function searchManuals(businessId: string, query: string, limit = 2
   return result.results || []
 }
 
+// 複数の事業IDでマニュアル検索（ステータスフィルター付き）
+export interface SearchManualsResult {
+  id: string
+  title: string
+  description: string | null
+  status: string
+  business_id: string
+  business_display_name_line1: string
+  business_display_name_line2: string
+  block_count: number
+}
+
+export async function searchManualsMultipleBusinesses(
+  businessIds: string[],
+  query: string,
+  statusFilter: string | null,
+  limit = 10
+): Promise<SearchManualsResult[]> {
+  if (businessIds.length === 0) return []
+
+  const db = await getD1Database()
+  const searchPattern = `%${query}%`
+  const placeholders = businessIds.map(() => '?').join(',')
+
+  let sql = `
+    SELECT m.id, m.title, m.description, m.status, m.business_id,
+           b.display_name_line1 as business_display_name_line1,
+           b.display_name_line2 as business_display_name_line2,
+           (SELECT COUNT(*) FROM blocks WHERE manual_id = m.id) as block_count
+    FROM manuals m
+    JOIN businesses b ON m.business_id = b.id
+    WHERE m.business_id IN (${placeholders})
+      AND m.is_archived = 0
+      AND (m.title LIKE ? OR m.description LIKE ?)
+  `
+
+  const params: unknown[] = [...businessIds, searchPattern, searchPattern]
+
+  if (statusFilter) {
+    sql += ` AND m.status = ?`
+    params.push(statusFilter)
+  }
+
+  sql += ` ORDER BY m.updated_at DESC LIMIT ?`
+  params.push(limit)
+
+  const result = await db.prepare(sql).bind(...params).all<SearchManualsResult>()
+  return result.results || []
+}
+
+// ブロック検索（テキストコンテンツ含む）
+export interface SearchBlockResult {
+  id: string
+  manual_id: string
+  type: string
+  content: string
+  manual_title: string
+  manual_business_id: string
+  business_display_name_line1: string
+  business_display_name_line2: string
+}
+
+export async function searchBlocks(
+  businessIds: string[],
+  statusFilter: string | null,
+  limit = 100
+): Promise<SearchBlockResult[]> {
+  if (businessIds.length === 0) return []
+
+  const db = await getD1Database()
+  const placeholders = businessIds.map(() => '?').join(',')
+
+  let sql = `
+    SELECT bl.id, bl.manual_id, bl.type, bl.content,
+           m.title as manual_title, m.business_id as manual_business_id,
+           b.display_name_line1 as business_display_name_line1,
+           b.display_name_line2 as business_display_name_line2
+    FROM blocks bl
+    JOIN manuals m ON bl.manual_id = m.id
+    JOIN businesses b ON m.business_id = b.id
+    WHERE m.business_id IN (${placeholders})
+      AND m.is_archived = 0
+      AND bl.type IN ('TEXT', 'WARNING', 'CHECKPOINT')
+  `
+
+  const params: unknown[] = [...businessIds]
+
+  if (statusFilter) {
+    sql += ` AND m.status = ?`
+    params.push(statusFilter)
+  }
+
+  sql += ` ORDER BY bl.updated_at DESC LIMIT ?`
+  params.push(limit)
+
+  const result = await db.prepare(sql).bind(...params).all<SearchBlockResult>()
+  return result.results || []
+}
+
+// ユーザーの事業アクセス情報を取得（検索用）
+export interface UserSearchAccess {
+  is_super_admin: number
+  business_accesses: Array<{ business_id: string; role: string }>
+}
+
+export async function getUserSearchAccess(userId: string): Promise<UserSearchAccess | null> {
+  const db = await getD1Database()
+
+  const user = await db
+    .prepare('SELECT is_super_admin FROM users WHERE id = ?')
+    .bind(userId)
+    .first<{ is_super_admin: number }>()
+
+  if (!user) return null
+
+  const accessResult = await db
+    .prepare('SELECT business_id, role FROM business_access WHERE user_id = ?')
+    .bind(userId)
+    .all<{ business_id: string; role: string }>()
+
+  return {
+    is_super_admin: user.is_super_admin,
+    business_accesses: accessResult.results || []
+  }
+}
+
 // ========================================
 // Analytics
 // ========================================
@@ -1228,4 +1547,277 @@ export async function getWorkSessionStats(businessId: string, startDate: string,
     }>()
 
   return result || { total_sessions: 0, completed_sessions: 0, unique_users: 0, manuals_used: 0 }
+}
+
+// ユーザーの管理者アクセス情報を取得
+export interface UserAdminAccess {
+  is_super_admin: number
+  admin_business_ids: string[]
+}
+
+export async function getUserAdminAccess(userId: string): Promise<UserAdminAccess | null> {
+  const db = await getD1Database()
+
+  const user = await db
+    .prepare('SELECT is_super_admin FROM users WHERE id = ?')
+    .bind(userId)
+    .first<{ is_super_admin: number }>()
+
+  if (!user) return null
+
+  const accessResult = await db
+    .prepare("SELECT business_id FROM business_access WHERE user_id = ? AND role = 'ADMIN'")
+    .bind(userId)
+    .all<{ business_id: string }>()
+
+  return {
+    is_super_admin: user.is_super_admin,
+    admin_business_ids: (accessResult.results || []).map(a => a.business_id)
+  }
+}
+
+// アクティブな事業IDリストを取得
+export async function getActiveBusinessIds(): Promise<string[]> {
+  const db = await getD1Database()
+  const result = await db
+    .prepare('SELECT id FROM businesses WHERE is_active = 1')
+    .all<{ id: string }>()
+  return (result.results || []).map(b => b.id)
+}
+
+// ユーザー別セッション統計
+export interface UserSessionStats {
+  user_id: string
+  session_count: number
+}
+
+export async function getSessionStatsByUser(
+  businessIds: string[],
+  filters: {
+    userId?: string
+    manualId?: string
+    startDate?: string
+    endDate?: string
+  }
+): Promise<UserSessionStats[]> {
+  if (businessIds.length === 0) return []
+
+  const db = await getD1Database()
+  const placeholders = businessIds.map(() => '?').join(',')
+
+  let sql = `
+    SELECT ws.user_id, COUNT(*) as session_count
+    FROM work_sessions ws
+    JOIN manuals m ON ws.manual_id = m.id
+    WHERE m.business_id IN (${placeholders})
+  `
+
+  const params: unknown[] = [...businessIds]
+
+  if (filters.userId) {
+    sql += ` AND ws.user_id = ?`
+    params.push(filters.userId)
+  }
+  if (filters.manualId) {
+    sql += ` AND ws.manual_id = ?`
+    params.push(filters.manualId)
+  }
+  if (filters.startDate) {
+    sql += ` AND ws.started_at >= ?`
+    params.push(filters.startDate)
+  }
+  if (filters.endDate) {
+    sql += ` AND ws.started_at <= ?`
+    params.push(filters.endDate)
+  }
+
+  sql += ` GROUP BY ws.user_id`
+
+  const result = await db.prepare(sql).bind(...params).all<UserSessionStats>()
+  return result.results || []
+}
+
+// マニュアル別セッション統計
+export interface ManualSessionStats {
+  manual_id: string
+  session_count: number
+}
+
+export async function getSessionStatsByManual(
+  businessIds: string[],
+  filters: {
+    userId?: string
+    manualId?: string
+    startDate?: string
+    endDate?: string
+  }
+): Promise<ManualSessionStats[]> {
+  if (businessIds.length === 0) return []
+
+  const db = await getD1Database()
+  const placeholders = businessIds.map(() => '?').join(',')
+
+  let sql = `
+    SELECT ws.manual_id, COUNT(*) as session_count
+    FROM work_sessions ws
+    JOIN manuals m ON ws.manual_id = m.id
+    WHERE m.business_id IN (${placeholders})
+  `
+
+  const params: unknown[] = [...businessIds]
+
+  if (filters.userId) {
+    sql += ` AND ws.user_id = ?`
+    params.push(filters.userId)
+  }
+  if (filters.manualId) {
+    sql += ` AND ws.manual_id = ?`
+    params.push(filters.manualId)
+  }
+  if (filters.startDate) {
+    sql += ` AND ws.started_at >= ?`
+    params.push(filters.startDate)
+  }
+  if (filters.endDate) {
+    sql += ` AND ws.started_at <= ?`
+    params.push(filters.endDate)
+  }
+
+  sql += ` GROUP BY ws.manual_id`
+
+  const result = await db.prepare(sql).bind(...params).all<ManualSessionStats>()
+  return result.results || []
+}
+
+// 完了済みセッションを取得（平均時間計算用）
+export interface CompletedSessionDuration {
+  started_at: string
+  completed_at: string
+}
+
+export async function getCompletedSessionsByUser(
+  businessIds: string[],
+  userId: string,
+  filters: {
+    manualId?: string
+    startDate?: string
+    endDate?: string
+  }
+): Promise<CompletedSessionDuration[]> {
+  if (businessIds.length === 0) return []
+
+  const db = await getD1Database()
+  const placeholders = businessIds.map(() => '?').join(',')
+
+  let sql = `
+    SELECT ws.started_at, ws.completed_at
+    FROM work_sessions ws
+    JOIN manuals m ON ws.manual_id = m.id
+    WHERE m.business_id IN (${placeholders})
+      AND ws.user_id = ?
+      AND ws.status = 'COMPLETED'
+  `
+
+  const params: unknown[] = [...businessIds, userId]
+
+  if (filters.manualId) {
+    sql += ` AND ws.manual_id = ?`
+    params.push(filters.manualId)
+  }
+  if (filters.startDate) {
+    sql += ` AND ws.started_at >= ?`
+    params.push(filters.startDate)
+  }
+  if (filters.endDate) {
+    sql += ` AND ws.started_at <= ?`
+    params.push(filters.endDate)
+  }
+
+  const result = await db.prepare(sql).bind(...params).all<CompletedSessionDuration>()
+  return result.results || []
+}
+
+export async function getCompletedSessionsByManual(
+  businessIds: string[],
+  manualId: string,
+  filters: {
+    userId?: string
+    startDate?: string
+    endDate?: string
+  }
+): Promise<CompletedSessionDuration[]> {
+  if (businessIds.length === 0) return []
+
+  const db = await getD1Database()
+  const placeholders = businessIds.map(() => '?').join(',')
+
+  let sql = `
+    SELECT ws.started_at, ws.completed_at
+    FROM work_sessions ws
+    JOIN manuals m ON ws.manual_id = m.id
+    WHERE m.business_id IN (${placeholders})
+      AND ws.manual_id = ?
+      AND ws.status = 'COMPLETED'
+  `
+
+  const params: unknown[] = [...businessIds, manualId]
+
+  if (filters.userId) {
+    sql += ` AND ws.user_id = ?`
+    params.push(filters.userId)
+  }
+  if (filters.startDate) {
+    sql += ` AND ws.started_at >= ?`
+    params.push(filters.startDate)
+  }
+  if (filters.endDate) {
+    sql += ` AND ws.started_at <= ?`
+    params.push(filters.endDate)
+  }
+
+  const result = await db.prepare(sql).bind(...params).all<CompletedSessionDuration>()
+  return result.results || []
+}
+
+// フィルター用のユーザー一覧取得
+export async function getUsersWithWorkSessions(businessIds: string[]): Promise<Array<{ id: string; name: string; email: string }>> {
+  if (businessIds.length === 0) return []
+
+  const db = await getD1Database()
+  const placeholders = businessIds.map(() => '?').join(',')
+
+  const result = await db
+    .prepare(`
+      SELECT DISTINCT u.id, u.name, u.email
+      FROM users u
+      JOIN work_sessions ws ON u.id = ws.user_id
+      JOIN manuals m ON ws.manual_id = m.id
+      WHERE m.business_id IN (${placeholders})
+      ORDER BY u.name ASC
+    `)
+    .bind(...businessIds)
+    .all<{ id: string; name: string; email: string }>()
+
+  return result.results || []
+}
+
+// フィルター用のマニュアル一覧取得
+export async function getManualsWithWorkSessions(businessIds: string[]): Promise<Array<{ id: string; title: string }>> {
+  if (businessIds.length === 0) return []
+
+  const db = await getD1Database()
+  const placeholders = businessIds.map(() => '?').join(',')
+
+  const result = await db
+    .prepare(`
+      SELECT DISTINCT m.id, m.title
+      FROM manuals m
+      JOIN work_sessions ws ON m.id = ws.manual_id
+      WHERE m.business_id IN (${placeholders})
+      ORDER BY m.title ASC
+    `)
+    .bind(...businessIds)
+    .all<{ id: string; title: string }>()
+
+  return result.results || []
 }

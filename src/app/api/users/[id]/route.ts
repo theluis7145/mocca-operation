@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  findUserById,
+  updateUser,
+  deleteUser,
+  findBusinessAccessesByUser,
+  createBusinessAccess,
+  getD1Database,
+} from '@/lib/d1'
 
 // GET /api/users/[id] - ユーザー詳細を取得（スーパー管理者のみ）
 export async function GET(
@@ -22,30 +29,7 @@ export async function GET(
 
     const { id } = await params
 
-    const user = await prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        isSuperAdmin: true,
-        isActive: true,
-        fontSize: true,
-        createdAt: true,
-        businessAccess: {
-          include: {
-            business: {
-              select: {
-                id: true,
-                name: true,
-                displayNameLine1: true,
-                displayNameLine2: true,
-              },
-            },
-          },
-        },
-      },
-    })
+    const user = await findUserById(id)
 
     if (!user) {
       return NextResponse.json(
@@ -54,7 +38,28 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(user)
+    const accesses = await findBusinessAccessesByUser(id)
+
+    return NextResponse.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      isSuperAdmin: Boolean(user.is_super_admin),
+      isActive: Boolean(user.is_active),
+      fontSize: user.font_size,
+      createdAt: user.created_at,
+      businessAccess: accesses.map((access) => ({
+        id: access.id,
+        businessId: access.business_id,
+        role: access.role,
+        business: {
+          id: access.business.id,
+          name: access.business.name,
+          displayNameLine1: access.business.display_name_line1,
+          displayNameLine2: access.business.display_name_line2,
+        },
+      })),
+    })
   } catch (error) {
     console.error('Failed to fetch user:', error)
     return NextResponse.json(
@@ -87,10 +92,7 @@ export async function PATCH(
     const { businessAccess, isActive } = body
 
     // ユーザーの存在確認
-    const existingUser = await prisma.user.findUnique({
-      where: { id },
-      select: { id: true, isSuperAdmin: true },
-    })
+    const existingUser = await findUserById(id)
 
     if (!existingUser) {
       return NextResponse.json(
@@ -109,69 +111,63 @@ export async function PATCH(
         )
       }
 
-      await prisma.user.update({
-        where: { id },
-        data: { isActive },
-      })
+      await updateUser(id, { is_active: isActive })
     }
 
     // businessAccessの更新がある場合
     if (businessAccess !== undefined) {
       // スーパー管理者の場合は事業権限の更新をスキップ
-      if (existingUser.isSuperAdmin) {
+      if (existingUser.is_super_admin) {
         return NextResponse.json(
           { error: 'スーパー管理者の事業権限は変更できません' },
           { status: 400 }
         )
       }
 
-      // 既存の事業アクセスを全て削除して、新しいものを作成
-      await prisma.$transaction(async (tx) => {
-        // 既存のアクセス権を削除
-        await tx.businessAccess.deleteMany({
-          where: { userId: id },
-        })
+      const db = await getD1Database()
 
-        // 新しいアクセス権を作成
-        if (businessAccess && businessAccess.length > 0) {
-          await tx.businessAccess.createMany({
-            data: businessAccess.map((access: { businessId: string; role: 'ADMIN' | 'WORKER' }) => ({
-              userId: id,
-              businessId: access.businessId,
-              role: access.role,
-            })),
+      // 既存のアクセス権を削除
+      await db
+        .prepare('DELETE FROM business_access WHERE user_id = ?')
+        .bind(id)
+        .run()
+
+      // 新しいアクセス権を作成
+      if (businessAccess && businessAccess.length > 0) {
+        for (const access of businessAccess) {
+          await createBusinessAccess({
+            user_id: id,
+            business_id: access.businessId,
+            role: access.role,
           })
         }
-      })
+      }
     }
 
     // 更新後のユーザー情報を取得して返す
-    const updatedUser = await prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        isSuperAdmin: true,
-        isActive: true,
-        fontSize: true,
-        createdAt: true,
-        businessAccess: {
-          include: {
-            business: {
-              select: {
-                id: true,
-                name: true,
-                displayNameLine1: true,
-                displayNameLine2: true,
-              },
-            },
-          },
-        },
-      },
-    })
+    const updatedUser = await findUserById(id)
+    const accesses = await findBusinessAccessesByUser(id)
 
-    return NextResponse.json(updatedUser)
+    return NextResponse.json({
+      id: updatedUser!.id,
+      email: updatedUser!.email,
+      name: updatedUser!.name,
+      isSuperAdmin: Boolean(updatedUser!.is_super_admin),
+      isActive: Boolean(updatedUser!.is_active),
+      fontSize: updatedUser!.font_size,
+      createdAt: updatedUser!.created_at,
+      businessAccess: accesses.map((access) => ({
+        id: access.id,
+        businessId: access.business_id,
+        role: access.role,
+        business: {
+          id: access.business.id,
+          name: access.business.name,
+          displayNameLine1: access.business.display_name_line1,
+          displayNameLine2: access.business.display_name_line2,
+        },
+      })),
+    })
   } catch (error) {
     console.error('Failed to update user:', error)
     return NextResponse.json(
@@ -210,10 +206,7 @@ export async function DELETE(
     }
 
     // ユーザーの存在確認
-    const existingUser = await prisma.user.findUnique({
-      where: { id },
-      select: { id: true },
-    })
+    const existingUser = await findUserById(id)
 
     if (!existingUser) {
       return NextResponse.json(
@@ -222,9 +215,7 @@ export async function DELETE(
       )
     }
 
-    await prisma.user.delete({
-      where: { id },
-    })
+    await deleteUser(id)
 
     return NextResponse.json({ message: 'ユーザーを削除しました' })
   } catch (error) {

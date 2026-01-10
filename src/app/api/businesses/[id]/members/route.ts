@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  findUserById,
+  findBusinessAccessesByBusiness,
+  findBusinessAccessByUserAndBusiness,
+  createBusinessAccess,
+  findAllUsers,
+} from '@/lib/d1'
 import { getPermissionLevel, canEditManual } from '@/lib/permissions'
 
 type RouteContext = {
@@ -29,31 +35,12 @@ export async function GET(
       )
     }
 
-    // スーパー管理者を含むすべてのメンバーを取得
-    const businessAccesses = await prisma.businessAccess.findMany({
-      where: { businessId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            isSuperAdmin: true,
-          },
-        },
-      },
-    })
+    // 事業のメンバーを取得
+    const businessAccesses = await findBusinessAccessesByBusiness(businessId)
 
-    // スーパー管理者も含める
-    const superAdmins = await prisma.user.findMany({
-      where: { isSuperAdmin: true },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        isSuperAdmin: true,
-      },
-    })
+    // スーパー管理者を取得
+    const allUsers = await findAllUsers()
+    const superAdmins = allUsers.filter(u => u.is_super_admin)
 
     // メンバーリストを作成（重複を除去）
     const memberMap = new Map()
@@ -61,7 +48,10 @@ export async function GET(
     // スーパー管理者を追加
     for (const admin of superAdmins) {
       memberMap.set(admin.id, {
-        ...admin,
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        isSuperAdmin: true,
         businessAccess: [],
       })
     }
@@ -76,7 +66,10 @@ export async function GET(
         })
       } else {
         memberMap.set(access.user.id, {
-          ...access.user,
+          id: access.user.id,
+          email: access.user.email,
+          name: access.user.name,
+          isSuperAdmin: Boolean(access.user.is_super_admin),
           businessAccess: [{
             id: access.id,
             role: access.role,
@@ -109,12 +102,9 @@ export async function POST(
     }
 
     // スーパー管理者のみメンバー追加可能
-    const currentUser = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { isSuperAdmin: true },
-    })
+    const currentUser = await findUserById(session.user.id)
 
-    if (!currentUser?.isSuperAdmin) {
+    if (!currentUser?.is_super_admin) {
       return NextResponse.json(
         { error: 'この操作を行う権限がありません' },
         { status: 403 }
@@ -133,14 +123,7 @@ export async function POST(
     }
 
     // すでにアクセス権があるか確認
-    const existingAccess = await prisma.businessAccess.findUnique({
-      where: {
-        userId_businessId: {
-          userId,
-          businessId,
-        },
-      },
-    })
+    const existingAccess = await findBusinessAccessByUserAndBusiness(userId, businessId)
 
     if (existingAccess) {
       return NextResponse.json(
@@ -149,24 +132,28 @@ export async function POST(
       )
     }
 
-    const access = await prisma.businessAccess.create({
-      data: {
-        userId,
-        businessId,
-        role,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-          },
-        },
-      },
+    const access = await createBusinessAccess({
+      user_id: userId,
+      business_id: businessId,
+      role,
     })
 
-    return NextResponse.json(access, { status: 201 })
+    // ユーザー情報を取得
+    const user = await findUserById(userId)
+
+    return NextResponse.json({
+      id: access.id,
+      userId: access.user_id,
+      businessId: access.business_id,
+      role: access.role,
+      createdAt: access.created_at,
+      updatedAt: access.updated_at,
+      user: user ? {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      } : null,
+    }, { status: 201 })
   } catch (error) {
     console.error('Failed to add member:', error)
     return NextResponse.json(

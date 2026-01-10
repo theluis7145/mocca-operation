@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  findBlockMemoById,
+  findBlockMemoWithUser,
+  updateBlockMemo,
+  deleteBlockMemo,
+} from '@/lib/d1'
 
 type RouteContext = {
   params: Promise<{ id: string }>
@@ -22,9 +27,7 @@ export async function PATCH(
     const { content, visibility } = body
 
     // メモの存在確認と所有権チェック
-    const existingMemo = await prisma.blockMemo.findUnique({
-      where: { id },
-    })
+    const existingMemo = await findBlockMemoById(id)
 
     if (!existingMemo) {
       return NextResponse.json(
@@ -34,30 +37,39 @@ export async function PATCH(
     }
 
     // 自分のメモでない場合は編集不可
-    if (existingMemo.userId !== session.user.id) {
+    if (existingMemo.user_id !== session.user.id) {
       return NextResponse.json(
         { error: 'このメモを編集する権限がありません' },
         { status: 403 }
       )
     }
 
-    const memo = await prisma.blockMemo.update({
-      where: { id },
-      data: {
-        ...(content !== undefined && { content }),
-        ...(visibility !== undefined && { visibility }),
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
+    await updateBlockMemo(id, {
+      ...(content !== undefined && { content }),
+      ...(visibility !== undefined && { visibility }),
     })
 
-    return NextResponse.json(memo)
+    // 更新後のメモを取得（ユーザー情報含む）
+    const memo = await findBlockMemoWithUser(id)
+
+    if (!memo) {
+      return NextResponse.json(
+        { error: 'メモの取得に失敗しました' },
+        { status: 500 }
+      )
+    }
+
+    // snake_case を camelCase に変換してレスポンス
+    return NextResponse.json({
+      id: memo.id,
+      blockId: memo.block_id,
+      userId: memo.user_id,
+      content: memo.content,
+      visibility: memo.visibility,
+      createdAt: memo.created_at,
+      updatedAt: memo.updated_at,
+      user: memo.user,
+    })
   } catch (error) {
     console.error('Failed to update memo:', error)
     return NextResponse.json(
@@ -81,9 +93,7 @@ export async function DELETE(
     const { id } = await context.params
 
     // メモの存在確認と所有権チェック
-    const existingMemo = await prisma.blockMemo.findUnique({
-      where: { id },
-    })
+    const existingMemo = await findBlockMemoById(id)
 
     if (!existingMemo) {
       return NextResponse.json(
@@ -93,16 +103,14 @@ export async function DELETE(
     }
 
     // 自分のメモでない場合は削除不可（スーパー管理者は削除可能）
-    if (existingMemo.userId !== session.user.id && !session.user.isSuperAdmin) {
+    if (existingMemo.user_id !== session.user.id && !session.user.isSuperAdmin) {
       return NextResponse.json(
         { error: 'このメモを削除する権限がありません' },
         { status: 403 }
       )
     }
 
-    await prisma.blockMemo.delete({
-      where: { id },
-    })
+    await deleteBlockMemo(id)
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -1,16 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  getD1Database,
+  findWorkSessionById,
+  findUserById,
+  findBlockById,
+  findWorkSessionNotesBySession,
+  createWorkSessionNote,
+  updateWorkSessionNote,
+} from '@/lib/d1'
+import type { D1WorkSessionNote, D1WorkSessionNotePhoto, D1Block } from '@/lib/d1'
 
 type RouteContext = {
   params: Promise<{ id: string }>
 }
 
-// POST /api/work-sessions/:id/notes - メモ追加
-export async function POST(
-  request: NextRequest,
-  context: RouteContext
+// Helper types for joined query results
+interface NoteWithBlock extends D1WorkSessionNote {
+  blk_id: string | null
+  blk_type: string | null
+  blk_content: string | null
+  blk_sort_order: number | null
+}
+
+// Helper to convert note to camelCase response
+function toNoteResponse(
+  note: D1WorkSessionNote,
+  block?: { id: string; sortOrder: number } | null,
+  photos?: { id: string; imageData: string; createdAt: string }[]
 ) {
+  return {
+    id: note.id,
+    workSessionId: note.work_session_id,
+    blockId: note.block_id,
+    content: note.content,
+    createdAt: note.created_at,
+    updatedAt: note.updated_at,
+    block: block || null,
+    photos: photos || [],
+  }
+}
+
+// POST /api/work-sessions/:id/notes - メモ追加
+export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const session = await auth()
     if (!session?.user?.id) {
@@ -28,10 +60,10 @@ export async function POST(
       )
     }
 
+    const db = await getD1Database()
+
     // 作業セッションを取得
-    const workSession = await prisma.workSession.findUnique({
-      where: { id: workSessionId },
-    })
+    const workSession = await findWorkSessionById(workSessionId)
 
     if (!workSession) {
       return NextResponse.json(
@@ -41,7 +73,7 @@ export async function POST(
     }
 
     // 本人のみ追加可能
-    if (workSession.userId !== session.user.id) {
+    if (workSession.user_id !== session.user.id) {
       return NextResponse.json(
         { error: '他のユーザーの作業セッションにメモは追加できません' },
         { status: 403 }
@@ -56,9 +88,7 @@ export async function POST(
     }
 
     // ブロックが存在するか確認
-    const block = await prisma.block.findUnique({
-      where: { id: blockId },
-    })
+    const block = await findBlockById(blockId)
 
     if (!block) {
       return NextResponse.json(
@@ -68,40 +98,30 @@ export async function POST(
     }
 
     // 既存のメモがあれば更新、なければ作成
-    const existingNote = await prisma.workSessionNote.findFirst({
-      where: {
-        workSessionId,
-        blockId,
-      },
-    })
+    const existingNote = await db
+      .prepare(
+        `SELECT * FROM work_session_notes WHERE work_session_id = ? AND block_id = ?`
+      )
+      .bind(workSessionId, blockId)
+      .first<D1WorkSessionNote>()
 
-    let note
+    let note: D1WorkSessionNote
     if (existingNote) {
-      note = await prisma.workSessionNote.update({
-        where: { id: existingNote.id },
-        data: { content },
-        include: {
-          block: {
-            select: { id: true, sortOrder: true },
-          },
-        },
-      })
+      note = (await updateWorkSessionNote(existingNote.id, content))!
     } else {
-      note = await prisma.workSessionNote.create({
-        data: {
-          workSessionId,
-          blockId,
-          content,
-        },
-        include: {
-          block: {
-            select: { id: true, sortOrder: true },
-          },
-        },
+      note = await createWorkSessionNote({
+        work_session_id: workSessionId,
+        block_id: blockId,
+        content,
       })
     }
 
-    return NextResponse.json(note, { status: existingNote ? 200 : 201 })
+    const response = toNoteResponse(note, {
+      id: block.id,
+      sortOrder: block.sort_order,
+    })
+
+    return NextResponse.json(response, { status: existingNote ? 200 : 201 })
   } catch (error) {
     console.error('Failed to create/update work session note:', error)
     return NextResponse.json(
@@ -112,10 +132,7 @@ export async function POST(
 }
 
 // GET /api/work-sessions/:id/notes - メモ一覧取得
-export async function GET(
-  request: NextRequest,
-  context: RouteContext
-) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const session = await auth()
     if (!session?.user?.id) {
@@ -123,16 +140,20 @@ export async function GET(
     }
 
     const { id: workSessionId } = await context.params
+    const db = await getD1Database()
 
     // 作業セッションを取得
-    const workSession = await prisma.workSession.findUnique({
-      where: { id: workSessionId },
-      include: {
-        manual: {
-          select: { businessId: true },
-        },
-      },
-    })
+    const workSession = await db
+      .prepare(
+        `
+        SELECT ws.*, m.business_id as m_business_id
+        FROM work_sessions ws
+        JOIN manuals m ON ws.manual_id = m.id
+        WHERE ws.id = ?
+      `
+      )
+      .bind(workSessionId)
+      .first<{ user_id: string; m_business_id: string }>()
 
     if (!workSession) {
       return NextResponse.json(
@@ -142,21 +163,22 @@ export async function GET(
     }
 
     // 本人または管理者のみ閲覧可能
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        isSuperAdmin: true,
-        businessAccess: {
-          where: {
-            businessId: workSession.manual.businessId,
-            role: 'ADMIN',
-          },
-        },
-      },
-    })
+    const user = await findUserById(session.user.id)
 
-    const isOwner = workSession.userId === session.user.id
-    const isAdmin = user?.isSuperAdmin || (user?.businessAccess?.length ?? 0) > 0
+    if (!user) {
+      return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 })
+    }
+
+    // 管理者権限チェック
+    const adminAccess = await db
+      .prepare(
+        `SELECT id FROM business_access WHERE user_id = ? AND business_id = ? AND role = 'ADMIN'`
+      )
+      .bind(session.user.id, workSession.m_business_id)
+      .first()
+
+    const isOwner = workSession.user_id === session.user.id
+    const isAdmin = user.is_super_admin || adminAccess !== null
 
     if (!isOwner && !isAdmin) {
       return NextResponse.json(
@@ -165,19 +187,59 @@ export async function GET(
       )
     }
 
-    const notes = await prisma.workSessionNote.findMany({
-      where: { workSessionId },
-      include: {
-        block: {
-          select: { id: true, type: true, content: true, sortOrder: true },
-        },
-        photos: {
-          select: { id: true, imageData: true, createdAt: true },
-          orderBy: { createdAt: 'asc' },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    })
+    // メモを取得（ブロック情報付き）
+    const notesResult = await db
+      .prepare(
+        `
+        SELECT n.*,
+               blk.id as blk_id, blk.type as blk_type, blk.content as blk_content, blk.sort_order as blk_sort_order
+        FROM work_session_notes n
+        LEFT JOIN blocks blk ON n.block_id = blk.id
+        WHERE n.work_session_id = ?
+        ORDER BY n.created_at ASC
+      `
+      )
+      .bind(workSessionId)
+      .all<NoteWithBlock>()
+
+    // メモの写真を取得
+    const noteIds = (notesResult.results || []).map((n) => n.id)
+    let notePhotos: D1WorkSessionNotePhoto[] = []
+    if (noteIds.length > 0) {
+      const placeholders = noteIds.map(() => '?').join(',')
+      const photosResult = await db
+        .prepare(
+          `SELECT * FROM work_session_note_photos WHERE note_id IN (${placeholders}) ORDER BY created_at ASC`
+        )
+        .bind(...noteIds)
+        .all<D1WorkSessionNotePhoto>()
+      notePhotos = photosResult.results || []
+    }
+
+    // レスポンスを構築
+    const notes = (notesResult.results || []).map((note) => ({
+      id: note.id,
+      workSessionId: note.work_session_id,
+      blockId: note.block_id,
+      content: note.content,
+      createdAt: note.created_at,
+      updatedAt: note.updated_at,
+      block: note.blk_id
+        ? {
+            id: note.blk_id,
+            type: note.blk_type,
+            content: note.blk_content,
+            sortOrder: note.blk_sort_order,
+          }
+        : null,
+      photos: notePhotos
+        .filter((p) => p.note_id === note.id)
+        .map((p) => ({
+          id: p.id,
+          imageData: p.image_data,
+          createdAt: p.created_at,
+        })),
+    }))
 
     return NextResponse.json(notes)
   } catch (error) {

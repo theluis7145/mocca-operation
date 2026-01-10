@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  findUserById,
+  findBusinessAccessById,
+  updateBusinessAccessRole,
+  deleteBusinessAccess,
+} from '@/lib/d1'
 
 type RouteContext = {
   params: Promise<{ id: string; accessId: string }>
@@ -18,12 +23,9 @@ export async function PATCH(
     }
 
     // スーパー管理者のみ権限変更可能
-    const currentUser = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { isSuperAdmin: true },
-    })
+    const currentUser = await findUserById(session.user.id)
 
-    if (!currentUser?.isSuperAdmin) {
+    if (!currentUser?.is_super_admin) {
       return NextResponse.json(
         { error: 'この操作を行う権限がありません' },
         { status: 403 }
@@ -42,32 +44,40 @@ export async function PATCH(
     }
 
     // アクセス権が存在し、正しい事業に属しているか確認
-    const existingAccess = await prisma.businessAccess.findUnique({
-      where: { id: accessId },
-    })
+    const existingAccess = await findBusinessAccessById(accessId)
 
-    if (!existingAccess || existingAccess.businessId !== businessId) {
+    if (!existingAccess || existingAccess.business_id !== businessId) {
       return NextResponse.json(
         { error: 'アクセス権が見つかりません' },
         { status: 404 }
       )
     }
 
-    const access = await prisma.businessAccess.update({
-      where: { id: accessId },
-      data: { role },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-          },
-        },
-      },
-    })
+    const access = await updateBusinessAccessRole(accessId, role)
 
-    return NextResponse.json(access)
+    if (!access) {
+      return NextResponse.json(
+        { error: 'アクセス権の更新に失敗しました' },
+        { status: 500 }
+      )
+    }
+
+    // ユーザー情報を取得
+    const user = await findUserById(access.user_id)
+
+    return NextResponse.json({
+      id: access.id,
+      userId: access.user_id,
+      businessId: access.business_id,
+      role: access.role,
+      createdAt: access.created_at,
+      updatedAt: access.updated_at,
+      user: user ? {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      } : null,
+    })
   } catch (error) {
     console.error('Failed to update member:', error)
     return NextResponse.json(
@@ -89,12 +99,9 @@ export async function DELETE(
     }
 
     // スーパー管理者のみメンバー削除可能
-    const currentUser = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { isSuperAdmin: true },
-    })
+    const currentUser = await findUserById(session.user.id)
 
-    if (!currentUser?.isSuperAdmin) {
+    if (!currentUser?.is_super_admin) {
       return NextResponse.json(
         { error: 'この操作を行う権限がありません' },
         { status: 403 }
@@ -104,20 +111,16 @@ export async function DELETE(
     const { id: businessId, accessId } = await context.params
 
     // アクセス権が存在し、正しい事業に属しているか確認
-    const existingAccess = await prisma.businessAccess.findUnique({
-      where: { id: accessId },
-    })
+    const existingAccess = await findBusinessAccessById(accessId)
 
-    if (!existingAccess || existingAccess.businessId !== businessId) {
+    if (!existingAccess || existingAccess.business_id !== businessId) {
       return NextResponse.json(
         { error: 'アクセス権が見つかりません' },
         { status: 404 }
       )
     }
 
-    await prisma.businessAccess.delete({
-      where: { id: accessId },
-    })
+    await deleteBusinessAccess(accessId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { findBusinessAccessByUserAndBusiness, reorderManuals } from '@/lib/d1'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -24,30 +24,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // 管理者権限を確認
-    const access = await prisma.businessAccess.findFirst({
-      where: {
-        businessId,
-        userId: session.user.id,
-        role: 'ADMIN',
-      },
-    })
+    const access = await findBusinessAccessByUserAndBusiness(session.user.id, businessId)
 
-    if (!access && !session.user.isSuperAdmin) {
+    if ((!access || access.role !== 'ADMIN') && !session.user.isSuperAdmin) {
       return NextResponse.json(
         { error: 'Permission denied' },
         { status: 403 }
       )
     }
 
-    // トランザクションで順序を更新
-    await prisma.$transaction(
-      manualIds.map((manualId: string, index: number) =>
-        prisma.manual.update({
-          where: { id: manualId },
-          data: { sortOrder: index },
-        })
-      )
-    )
+    // 順序を更新
+    await reorderManuals(businessId, manualIds)
 
     return NextResponse.json({ success: true })
   } catch (error) {

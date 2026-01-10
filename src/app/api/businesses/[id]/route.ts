@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { findBusinessById, updateBusiness, findManualsByBusiness } from '@/lib/d1'
 import { getPermissionLevel, canViewManual, canEditManual } from '@/lib/permissions'
 
 type RouteContext = {
@@ -8,11 +8,11 @@ type RouteContext = {
 }
 
 // themeColorsをパースするヘルパー関数
-function parseThemeColors(business: { themeColors?: string | string[] | null }) {
-  if (!business.themeColors) return []
-  if (Array.isArray(business.themeColors)) return business.themeColors
+function parseThemeColors(themeColors?: string | string[] | null) {
+  if (!themeColors) return []
+  if (Array.isArray(themeColors)) return themeColors
   try {
-    return JSON.parse(business.themeColors)
+    return JSON.parse(themeColors)
   } catch {
     return []
   }
@@ -39,15 +39,7 @@ export async function GET(
       )
     }
 
-    const business = await prisma.business.findUnique({
-      where: { id },
-      include: {
-        manuals: {
-          where: { isArchived: false },
-          orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
-        },
-      },
-    })
+    const business = await findBusinessById(id)
 
     if (!business) {
       return NextResponse.json(
@@ -56,17 +48,42 @@ export async function GET(
       )
     }
 
+    // マニュアル一覧を取得
+    const manuals = await findManualsByBusiness(id)
+
     // 管理者でない場合、adminOnlyマニュアルと非公開マニュアルをフィルタリング
     const isAdmin = canEditManual(level)
     const filteredManuals = isAdmin
-      ? business.manuals
-      : business.manuals.filter((m) => m.status === 'PUBLISHED' && !m.adminOnly)
+      ? manuals
+      : manuals.filter((m) => m.status === 'PUBLISHED' && !m.admin_only)
 
-    // themeColorsをパースして返す
+    // レスポンス用に変換
     const response = {
-      ...business,
-      manuals: filteredManuals,
-      themeColors: parseThemeColors(business),
+      id: business.id,
+      name: business.name,
+      displayNameLine1: business.display_name_line1,
+      displayNameLine2: business.display_name_line2,
+      description: business.description,
+      icon: business.icon,
+      color: business.color,
+      themeColors: parseThemeColors(business.theme_colors),
+      sortOrder: business.sort_order,
+      isActive: Boolean(business.is_active),
+      createdAt: business.created_at,
+      updatedAt: business.updated_at,
+      manuals: filteredManuals.map((m) => ({
+        id: m.id,
+        businessId: m.business_id,
+        title: m.title,
+        description: m.description,
+        status: m.status,
+        adminOnly: Boolean(m.admin_only),
+        sortOrder: m.sort_order,
+        isArchived: Boolean(m.is_archived),
+        version: m.version,
+        createdAt: m.created_at,
+        updatedAt: m.updated_at,
+      })),
     }
 
     return NextResponse.json(response)
@@ -101,31 +118,55 @@ export async function PATCH(
     const body = await request.json()
     const { name, displayNameLine1, displayNameLine2, description, icon, color, themeColors, sortOrder, isActive } = body
 
-    const business = await prisma.business.update({
-      where: { id },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(displayNameLine1 !== undefined && { displayNameLine1 }),
-        ...(displayNameLine2 !== undefined && { displayNameLine2 }),
-        ...(description !== undefined && { description }),
-        ...(icon !== undefined && { icon }),
-        ...(color !== undefined && { color }),
-        ...(themeColors !== undefined && { themeColors: JSON.stringify(themeColors) }),
-        ...(sortOrder !== undefined && { sortOrder }),
-        ...(isActive !== undefined && { isActive }),
-      },
-      include: {
-        manuals: {
-          where: { isArchived: false },
-          orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
-        },
-      },
+    const business = await updateBusiness(id, {
+      ...(name !== undefined && { name }),
+      ...(displayNameLine1 !== undefined && { display_name_line1: displayNameLine1 }),
+      ...(displayNameLine2 !== undefined && { display_name_line2: displayNameLine2 }),
+      ...(description !== undefined && { description }),
+      ...(icon !== undefined && { icon }),
+      ...(color !== undefined && { color }),
+      ...(themeColors !== undefined && { theme_colors: JSON.stringify(themeColors) }),
+      ...(sortOrder !== undefined && { sort_order: sortOrder }),
+      ...(isActive !== undefined && { is_active: isActive }),
     })
 
-    // themeColorsをパースして返す
+    if (!business) {
+      return NextResponse.json(
+        { error: '事業が見つかりません' },
+        { status: 404 }
+      )
+    }
+
+    // マニュアル一覧を取得
+    const manuals = await findManualsByBusiness(id)
+
+    // レスポンス用に変換
     const response = {
-      ...business,
-      themeColors: parseThemeColors(business),
+      id: business.id,
+      name: business.name,
+      displayNameLine1: business.display_name_line1,
+      displayNameLine2: business.display_name_line2,
+      description: business.description,
+      icon: business.icon,
+      color: business.color,
+      themeColors: parseThemeColors(business.theme_colors),
+      sortOrder: business.sort_order,
+      isActive: Boolean(business.is_active),
+      createdAt: business.created_at,
+      updatedAt: business.updated_at,
+      manuals: manuals.map((m) => ({
+        id: m.id,
+        businessId: m.business_id,
+        title: m.title,
+        description: m.description,
+        status: m.status,
+        adminOnly: Boolean(m.admin_only),
+        sortOrder: m.sort_order,
+        isArchived: Boolean(m.is_archived),
+        version: m.version,
+        createdAt: m.created_at,
+        updatedAt: m.updated_at,
+      })),
     }
 
     return NextResponse.json(response)
@@ -159,10 +200,7 @@ export async function DELETE(
     const { id } = await context.params
 
     // 論理削除
-    await prisma.business.update({
-      where: { id },
-      data: { isActive: false },
-    })
+    await updateBusiness(id, { is_active: false })
 
     return NextResponse.json({ success: true })
   } catch (error) {

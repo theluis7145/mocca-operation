@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { createBusiness, getD1Database } from '@/lib/d1'
 import { getAccessibleBusinesses } from '@/lib/permissions'
 
 // themeColorsをパースするヘルパー関数
-function parseThemeColors(business: { themeColors?: string | string[] | null }) {
-  if (!business.themeColors) return []
-  if (Array.isArray(business.themeColors)) return business.themeColors
+function parseThemeColors(themeColors?: string | string[] | null) {
+  if (!themeColors) return []
+  if (Array.isArray(themeColors)) return themeColors
   try {
-    return JSON.parse(business.themeColors)
+    return JSON.parse(themeColors)
   } catch {
     return []
   }
@@ -27,7 +27,7 @@ export async function GET() {
     // themeColorsをパースして返す
     const parsedBusinesses = businesses.map(b => ({
       ...b,
-      themeColors: parseThemeColors(b),
+      themeColors: parseThemeColors(b.themeColors),
     }))
 
     return NextResponse.json(parsedBusinesses)
@@ -66,30 +66,38 @@ export async function POST(request: NextRequest) {
     }
 
     // 最大のsortOrderを取得
-    const maxSortOrder = await prisma.business.aggregate({
-      _max: { sortOrder: true },
+    const db = await getD1Database()
+    const maxResult = await db
+      .prepare('SELECT MAX(sort_order) as max_sort FROM businesses')
+      .first<{ max_sort: number | null }>()
+    const maxSortOrder = maxResult?.max_sort || 0
+
+    const business = await createBusiness({
+      name,
+      display_name_line1: displayNameLine1,
+      display_name_line2: displayNameLine2,
+      description,
+      icon,
+      color,
+      theme_colors: JSON.stringify(themeColors || []),
+      sort_order: maxSortOrder + 1,
     })
 
-    const business = await prisma.business.create({
-      data: {
-        name,
-        displayNameLine1,
-        displayNameLine2,
-        description,
-        icon,
-        color,
-        themeColors: JSON.stringify(themeColors || []),
-        sortOrder: (maxSortOrder._max.sortOrder || 0) + 1,
-      },
-      include: {
-        manuals: true,
-      },
-    })
-
-    // レスポンス用にthemeColorsをパース
+    // レスポンス用に変換
     const response = {
-      ...business,
-      themeColors: parseThemeColors(business),
+      id: business.id,
+      name: business.name,
+      displayNameLine1: business.display_name_line1,
+      displayNameLine2: business.display_name_line2,
+      description: business.description,
+      icon: business.icon,
+      color: business.color,
+      themeColors: parseThemeColors(business.theme_colors),
+      sortOrder: business.sort_order,
+      isActive: Boolean(business.is_active),
+      createdAt: business.created_at,
+      updatedAt: business.updated_at,
+      manuals: [],
     }
 
     return NextResponse.json(response, { status: 201 })

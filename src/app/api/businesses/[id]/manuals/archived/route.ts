@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { findArchivedManualsByBusiness } from '@/lib/d1'
 import { getPermissionLevel, canEditManual } from '@/lib/permissions'
 
 type RouteContext = {
@@ -31,24 +31,20 @@ export async function GET(
     }
 
     // アーカイブ済みマニュアルを取得
-    const manuals = await prisma.manual.findMany({
-      where: {
-        businessId,
-        isArchived: true,
-      },
-      orderBy: { archivedAt: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        status: true,
-        adminOnly: true,
-        archivedAt: true,
-        updatedAt: true,
-      },
-    })
+    const manuals = await findArchivedManualsByBusiness(businessId)
 
-    return NextResponse.json(manuals)
+    // レスポンス形式に変換
+    const response = manuals.map((m) => ({
+      id: m.id,
+      title: m.title,
+      description: m.description,
+      status: m.status,
+      adminOnly: Boolean(m.admin_only),
+      archivedAt: m.archived_at,
+      updatedAt: m.updated_at,
+    }))
+
+    return NextResponse.json(response)
   } catch (error) {
     console.error('Failed to fetch archived manuals:', error)
     return NextResponse.json(

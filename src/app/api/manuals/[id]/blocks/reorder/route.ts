@@ -1,10 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  findManualById,
+  findBlocksByManual,
+  reorderBlocks,
+  updateManual,
+  type D1Block,
+} from '@/lib/d1'
 import { getPermissionLevel, canEditManual } from '@/lib/permissions'
 
 type RouteContext = {
   params: Promise<{ id: string }>
+}
+
+// D1のブロックをcamelCaseに変換
+function toBlockResponse(block: D1Block) {
+  return {
+    id: block.id,
+    manualId: block.manual_id,
+    type: block.type,
+    content: typeof block.content === 'string' ? JSON.parse(block.content) : block.content,
+    sortOrder: block.sort_order,
+    createdAt: block.created_at,
+    updatedAt: block.updated_at,
+  }
 }
 
 // PATCH /api/manuals/:id/blocks/reorder - ブロックの並び替え
@@ -21,9 +40,7 @@ export async function PATCH(
     const { id: manualId } = await context.params
 
     // マニュアルを取得して権限確認
-    const manual = await prisma.manual.findUnique({
-      where: { id: manualId },
-    })
+    const manual = await findManualById(manualId)
 
     if (!manual) {
       return NextResponse.json(
@@ -32,7 +49,7 @@ export async function PATCH(
       )
     }
 
-    const level = await getPermissionLevel(session.user.id, manual.businessId)
+    const level = await getPermissionLevel(session.user.id, manual.business_id)
 
     if (!canEditManual(level)) {
       return NextResponse.json(
@@ -51,29 +68,16 @@ export async function PATCH(
       )
     }
 
-    // トランザクションで一括更新
-    await prisma.$transaction(
-      blockIds.map((blockId, index) =>
-        prisma.block.update({
-          where: { id: blockId },
-          data: { sortOrder: index + 1 },
-        })
-      )
-    )
+    // ブロックの並び替え
+    await reorderBlocks(manualId, blockIds)
 
     // マニュアルの更新日時を更新
-    await prisma.manual.update({
-      where: { id: manualId },
-      data: { updatedBy: session.user.id },
-    })
+    await updateManual(manualId, { updated_by: session.user.id })
 
     // 更新後のブロック一覧を返す
-    const blocks = await prisma.block.findMany({
-      where: { manualId },
-      orderBy: { sortOrder: 'asc' },
-    })
+    const blocks = await findBlocksByManual(manualId)
 
-    return NextResponse.json(blocks)
+    return NextResponse.json(blocks.map(toBlockResponse))
   } catch (error) {
     console.error('Failed to reorder blocks:', error)
     return NextResponse.json(

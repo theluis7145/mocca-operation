@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  findBlockWithManual,
+  updateBlock,
+  deleteBlock,
+  updateManual,
+} from '@/lib/d1'
 import { getPermissionLevel, canEditManual } from '@/lib/permissions'
 
 type RouteContext = {
@@ -20,13 +25,8 @@ export async function PATCH(
 
     const { id } = await context.params
 
-    // ブロックを取得
-    const existingBlock = await prisma.block.findUnique({
-      where: { id },
-      include: {
-        manual: true,
-      },
-    })
+    // ブロックを取得（マニュアル情報含む）
+    const existingBlock = await findBlockWithManual(id)
 
     if (!existingBlock) {
       return NextResponse.json(
@@ -37,7 +37,7 @@ export async function PATCH(
 
     const level = await getPermissionLevel(
       session.user.id,
-      existingBlock.manual.businessId
+      existingBlock.manual.business_id
     )
 
     if (!canEditManual(level)) {
@@ -50,21 +50,24 @@ export async function PATCH(
     const body = await request.json()
     const { content, type } = body
 
-    const block = await prisma.block.update({
-      where: { id },
-      data: {
-        ...(content !== undefined && { content }),
-        ...(type !== undefined && { type }),
-      },
+    const block = await updateBlock(id, {
+      ...(content !== undefined && { content }),
+      ...(type !== undefined && { type }),
     })
 
     // マニュアルの更新日時を更新
-    await prisma.manual.update({
-      where: { id: existingBlock.manualId },
-      data: { updatedBy: session.user.id },
-    })
+    await updateManual(existingBlock.manual_id, { updated_by: session.user.id })
 
-    return NextResponse.json(block)
+    // snake_case を camelCase に変換してレスポンス
+    return NextResponse.json({
+      id: block!.id,
+      manualId: block!.manual_id,
+      type: block!.type,
+      content: block!.content,
+      sortOrder: block!.sort_order,
+      createdAt: block!.created_at,
+      updatedAt: block!.updated_at,
+    })
   } catch (error) {
     console.error('Failed to update block:', error)
     return NextResponse.json(
@@ -87,13 +90,8 @@ export async function DELETE(
 
     const { id } = await context.params
 
-    // ブロックを取得
-    const existingBlock = await prisma.block.findUnique({
-      where: { id },
-      include: {
-        manual: true,
-      },
-    })
+    // ブロックを取得（マニュアル情報含む）
+    const existingBlock = await findBlockWithManual(id)
 
     if (!existingBlock) {
       return NextResponse.json(
@@ -104,7 +102,7 @@ export async function DELETE(
 
     const level = await getPermissionLevel(
       session.user.id,
-      existingBlock.manual.businessId
+      existingBlock.manual.business_id
     )
 
     if (!canEditManual(level)) {
@@ -114,15 +112,10 @@ export async function DELETE(
       )
     }
 
-    await prisma.block.delete({
-      where: { id },
-    })
+    await deleteBlock(id)
 
     // マニュアルの更新日時を更新
-    await prisma.manual.update({
-      where: { id: existingBlock.manualId },
-      data: { updatedBy: session.user.id },
-    })
+    await updateManual(existingBlock.manual_id, { updated_by: session.user.id })
 
     return NextResponse.json({ success: true })
   } catch (error) {

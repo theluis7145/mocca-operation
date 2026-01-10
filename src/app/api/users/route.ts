@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  findAllUsers,
+  findUserByEmail,
+  createUser,
+  createBusinessAccess,
+  findBusinessAccessesByUser,
+} from '@/lib/d1'
 import { hash } from 'bcryptjs'
 
 // GET /api/users - ユーザー一覧を取得（スーパー管理者のみ）
@@ -18,32 +24,36 @@ export async function GET() {
       )
     }
 
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        isSuperAdmin: true,
-        isActive: true,
-        fontSize: true,
-        createdAt: true,
-        businessAccess: {
-          include: {
-            business: {
-              select: {
-                id: true,
-                name: true,
-                displayNameLine1: true,
-                displayNameLine2: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const users = await findAllUsers()
 
-    return NextResponse.json(users)
+    // 各ユーザーのbusinessAccessを取得
+    const usersWithAccess = await Promise.all(
+      users.map(async (user) => {
+        const accesses = await findBusinessAccessesByUser(user.id)
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          isSuperAdmin: Boolean(user.is_super_admin),
+          isActive: Boolean(user.is_active),
+          fontSize: user.font_size,
+          createdAt: user.created_at,
+          businessAccess: accesses.map((access) => ({
+            id: access.id,
+            businessId: access.business_id,
+            role: access.role,
+            business: {
+              id: access.business.id,
+              name: access.business.name,
+              displayNameLine1: access.business.display_name_line1,
+              displayNameLine2: access.business.display_name_line2,
+            },
+          })),
+        }
+      })
+    )
+
+    return NextResponse.json(usersWithAccess)
   } catch (error) {
     console.error('Failed to fetch users:', error)
     return NextResponse.json(
@@ -79,9 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     // メールアドレスの重複チェック
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    })
+    const existingUser = await findUserByEmail(email)
 
     if (existingUser) {
       return NextResponse.json(
@@ -92,43 +100,45 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await hash(password, 12)
 
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        name,
-        isSuperAdmin: isSuperAdmin || false,
-        businessAccess: businessAccess
-          ? {
-              create: businessAccess.map((access: { businessId: string; role: 'ADMIN' | 'WORKER' }) => ({
-                businessId: access.businessId,
-                role: access.role,
-              })),
-            }
-          : undefined,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        isSuperAdmin: true,
-        isActive: true,
-        businessAccess: {
-          include: {
-            business: {
-              select: {
-                id: true,
-                name: true,
-                displayNameLine1: true,
-                displayNameLine2: true,
-              },
-            },
-          },
-        },
-      },
+    const user = await createUser({
+      email,
+      password_hash: passwordHash,
+      name,
+      is_super_admin: isSuperAdmin || false,
     })
 
-    return NextResponse.json(user, { status: 201 })
+    // businessAccessを作成
+    if (businessAccess && businessAccess.length > 0) {
+      for (const access of businessAccess) {
+        await createBusinessAccess({
+          user_id: user.id,
+          business_id: access.businessId,
+          role: access.role,
+        })
+      }
+    }
+
+    // 作成後のbusinessAccessを取得
+    const accesses = await findBusinessAccessesByUser(user.id)
+
+    return NextResponse.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      isSuperAdmin: Boolean(user.is_super_admin),
+      isActive: Boolean(user.is_active),
+      businessAccess: accesses.map((access) => ({
+        id: access.id,
+        businessId: access.business_id,
+        role: access.role,
+        business: {
+          id: access.business.id,
+          name: access.business.name,
+          displayNameLine1: access.business.display_name_line1,
+          displayNameLine2: access.business.display_name_line2,
+        },
+      })),
+    }, { status: 201 })
   } catch (error) {
     console.error('Failed to create user:', error)
     return NextResponse.json(

@@ -1,16 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  getD1Database,
+  findWorkSessionById,
+  findWorkSessionNoteById,
+  findWorkSessionNotePhotoById,
+  createWorkSessionNotePhoto,
+  deleteWorkSessionNotePhoto,
+} from '@/lib/d1'
+import type { D1WorkSessionNotePhoto } from '@/lib/d1'
 
 type RouteContext = {
   params: Promise<{ id: string; noteId: string }>
 }
 
+// Helper to convert photo to camelCase response
+function toPhotoResponse(photo: D1WorkSessionNotePhoto) {
+  return {
+    id: photo.id,
+    noteId: photo.note_id,
+    imageData: photo.image_data,
+    createdAt: photo.created_at,
+  }
+}
+
 // POST /api/work-sessions/:id/notes/:noteId/photos - 申し送りメモに写真を追加
-export async function POST(
-  request: NextRequest,
-  context: RouteContext
-) {
+export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const session = await auth()
     if (!session?.user?.id) {
@@ -29,9 +44,7 @@ export async function POST(
     }
 
     // 作業セッションを取得
-    const workSession = await prisma.workSession.findUnique({
-      where: { id: workSessionId },
-    })
+    const workSession = await findWorkSessionById(workSessionId)
 
     if (!workSession) {
       return NextResponse.json(
@@ -41,7 +54,7 @@ export async function POST(
     }
 
     // 本人のみ追加可能
-    if (workSession.userId !== session.user.id) {
+    if (workSession.user_id !== session.user.id) {
       return NextResponse.json(
         { error: '他のユーザーの作業セッションに写真は追加できません' },
         { status: 403 }
@@ -56,9 +69,7 @@ export async function POST(
     }
 
     // メモの存在確認
-    const note = await prisma.workSessionNote.findUnique({
-      where: { id: noteId },
-    })
+    const note = await findWorkSessionNoteById(noteId)
 
     if (!note) {
       return NextResponse.json(
@@ -67,7 +78,7 @@ export async function POST(
       )
     }
 
-    if (note.workSessionId !== workSessionId) {
+    if (note.work_session_id !== workSessionId) {
       return NextResponse.json(
         { error: 'メモは指定された作業セッションに属していません' },
         { status: 400 }
@@ -75,14 +86,9 @@ export async function POST(
     }
 
     // 写真を保存
-    const photo = await prisma.workSessionNotePhoto.create({
-      data: {
-        noteId,
-        imageData,
-      },
-    })
+    const photo = await createWorkSessionNotePhoto(noteId, imageData)
 
-    return NextResponse.json(photo, { status: 201 })
+    return NextResponse.json(toPhotoResponse(photo), { status: 201 })
   } catch (error) {
     console.error('Failed to save note photo:', error)
     return NextResponse.json(
@@ -93,10 +99,7 @@ export async function POST(
 }
 
 // DELETE /api/work-sessions/:id/notes/:noteId/photos/:photoId - 写真を削除
-export async function DELETE(
-  request: NextRequest,
-  context: RouteContext
-) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const session = await auth()
     if (!session?.user?.id) {
@@ -115,9 +118,7 @@ export async function DELETE(
     }
 
     // 作業セッションを取得
-    const workSession = await prisma.workSession.findUnique({
-      where: { id: workSessionId },
-    })
+    const workSession = await findWorkSessionById(workSessionId)
 
     if (!workSession) {
       return NextResponse.json(
@@ -127,7 +128,7 @@ export async function DELETE(
     }
 
     // 本人のみ削除可能
-    if (workSession.userId !== session.user.id) {
+    if (workSession.user_id !== session.user.id) {
       return NextResponse.json(
         { error: '他のユーザーの写真は削除できません' },
         { status: 403 }
@@ -142,10 +143,7 @@ export async function DELETE(
     }
 
     // 写真の存在確認
-    const photo = await prisma.workSessionNotePhoto.findUnique({
-      where: { id: photoId },
-      include: { note: true },
-    })
+    const photo = await findWorkSessionNotePhotoById(photoId)
 
     if (!photo) {
       return NextResponse.json(
@@ -154,7 +152,7 @@ export async function DELETE(
       )
     }
 
-    if (photo.noteId !== noteId) {
+    if (photo.note_id !== noteId) {
       return NextResponse.json(
         { error: '写真は指定されたメモに属していません' },
         { status: 400 }
@@ -162,9 +160,7 @@ export async function DELETE(
     }
 
     // 写真を削除
-    await prisma.workSessionNotePhoto.delete({
-      where: { id: photoId },
-    })
+    await deleteWorkSessionNotePhoto(photoId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

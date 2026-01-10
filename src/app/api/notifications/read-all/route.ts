@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { markAllNotificationsAsRead } from '@/lib/d1'
 
 // POST /api/notifications/read-all - 全ての通知を既読にする
 export async function POST() {
@@ -10,13 +10,7 @@ export async function POST() {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
     }
 
-    await prisma.notification.updateMany({
-      where: {
-        userId: session.user.id,
-        isRead: false,
-      },
-      data: { isRead: true },
-    })
+    await markAllNotificationsAsRead(session.user.id)
 
     return NextResponse.json({ success: true })
   } catch (error) {

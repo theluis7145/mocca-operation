@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hash, compare } from 'bcryptjs'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { findUserById, updateUser } from '@/lib/d1'
 
 // PATCH /api/auth/password - パスワード変更
 export async function PATCH(request: NextRequest) {
@@ -29,10 +29,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // 現在のユーザー情報を取得
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { passwordHash: true },
-    })
+    const user = await findUserById(session.user.id)
 
     if (!user) {
       return NextResponse.json(
@@ -42,7 +39,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // 現在のパスワードを検証
-    const isCurrentPasswordValid = await compare(currentPassword, user.passwordHash)
+    const isCurrentPasswordValid = await compare(currentPassword, user.password_hash)
     if (!isCurrentPasswordValid) {
       return NextResponse.json(
         { error: '現在のパスワードが正しくありません' },
@@ -52,10 +49,7 @@ export async function PATCH(request: NextRequest) {
 
     // 新しいパスワードをハッシュ化して保存
     const newPasswordHash = await hash(newPassword, 12)
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { passwordHash: newPasswordHash },
-    })
+    await updateUser(session.user.id, { password_hash: newPasswordHash })
 
     return NextResponse.json({ message: 'パスワードを変更しました' })
   } catch (error) {

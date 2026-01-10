@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  findBlockWithManual,
+  findBlockMemosForUser,
+  createBlockMemo,
+  findUserById,
+  findBusinessAccessUserIds,
+  findSuperAdminIds,
+  createNotificationsForUsers,
+} from '@/lib/d1'
 
 type RouteContext = {
   params: Promise<{ id: string }>
@@ -20,12 +28,7 @@ export async function GET(
     const { id: blockId } = await context.params
 
     // ブロックの存在確認
-    const block = await prisma.block.findUnique({
-      where: { id: blockId },
-      include: {
-        manual: true,
-      },
-    })
+    const block = await findBlockWithManual(blockId)
 
     if (!block) {
       return NextResponse.json(
@@ -35,26 +38,21 @@ export async function GET(
     }
 
     // メモを取得（自分のメモ + 公開メモ）
-    const memos = await prisma.blockMemo.findMany({
-      where: {
-        blockId,
-        OR: [
-          { userId: session.user.id },
-          { visibility: 'PUBLIC' },
-        ],
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const memos = await findBlockMemosForUser(blockId, session.user.id)
 
-    return NextResponse.json(memos)
+    // snake_case を camelCase に変換してレスポンス
+    const response = memos.map(memo => ({
+      id: memo.id,
+      blockId: memo.block_id,
+      userId: memo.user_id,
+      content: memo.content,
+      visibility: memo.visibility,
+      createdAt: memo.created_at,
+      updatedAt: memo.updated_at,
+      user: memo.user,
+    }))
+
+    return NextResponse.json(response)
   } catch (error) {
     console.error('Failed to fetch memos:', error)
     return NextResponse.json(
@@ -86,13 +84,8 @@ export async function POST(
       )
     }
 
-    // ブロックの存在確認
-    const block = await prisma.block.findUnique({
-      where: { id: blockId },
-      include: {
-        manual: true,
-      },
-    })
+    // ブロックの存在確認（マニュアル情報含む）
+    const block = await findBlockWithManual(blockId)
 
     if (!block) {
       return NextResponse.json(
@@ -102,67 +95,53 @@ export async function POST(
     }
 
     // メモを作成
-    const memo = await prisma.blockMemo.create({
-      data: {
-        blockId,
-        userId: session.user.id,
-        content,
-        visibility,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
+    const memo = await createBlockMemo({
+      block_id: blockId,
+      user_id: session.user.id,
+      content,
+      visibility,
     })
+
+    // ユーザー情報を取得
+    const user = await findUserById(session.user.id)
 
     // 公開メモの場合、同じ事業のユーザーに通知を作成
     if (visibility === 'PUBLIC') {
-      const businessId = block.manual.businessId
+      const businessId = block.manual.business_id
 
       // 同じ事業にアクセス権のあるユーザーを取得（自分以外）
-      const usersWithAccess = await prisma.businessAccess.findMany({
-        where: {
-          businessId,
-          userId: { not: session.user.id },
-        },
-        select: { userId: true },
-      })
+      const usersWithAccess = await findBusinessAccessUserIds(businessId, session.user.id)
 
       // スーパー管理者も取得（自分以外）
-      const superAdmins = await prisma.user.findMany({
-        where: {
-          isSuperAdmin: true,
-          id: { not: session.user.id },
-        },
-        select: { id: true },
-      })
+      const superAdmins = await findSuperAdminIds(session.user.id)
 
-      const userIds = [
-        ...usersWithAccess.map((u) => u.userId),
-        ...superAdmins.map((u) => u.id),
-      ]
-      const uniqueUserIds = [...new Set(userIds)]
+      const uniqueUserIds = [...new Set([...usersWithAccess, ...superAdmins])]
 
       // 通知を作成
       if (uniqueUserIds.length > 0) {
-        await prisma.notification.createMany({
-          data: uniqueUserIds.map((userId) => ({
-            userId,
-            type: 'NEW_PUBLIC_MEMO',
-            title: '新しい公開メモ',
-            message: `${session.user.name}さんが「${block.manual.title}」にメモを追加しました`,
-            linkUrl: `/manual/${block.manual.id}`,
-            relatedMemoId: memo.id,
-          })),
+        await createNotificationsForUsers(uniqueUserIds, {
+          type: 'NEW_PUBLIC_MEMO',
+          title: '新しい公開メモ',
+          message: `${session.user.name}さんが「${block.manual.title}」にメモを追加しました`,
+          link_url: `/manual/${block.manual.id}`,
+          related_memo_id: memo.id,
         })
       }
     }
 
-    return NextResponse.json(memo, { status: 201 })
+    // snake_case を camelCase に変換してレスポンス
+    const response = {
+      id: memo.id,
+      blockId: memo.block_id,
+      userId: memo.user_id,
+      content: memo.content,
+      visibility: memo.visibility,
+      createdAt: memo.created_at,
+      updatedAt: memo.updated_at,
+      user: user ? { id: user.id, name: user.name } : null,
+    }
+
+    return NextResponse.json(response, { status: 201 })
   } catch (error) {
     console.error('Failed to create memo:', error)
     return NextResponse.json(

@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import {
+  findWorkSessionById,
+  findBlockById,
+  findPhotoRecordsBySession,
+  findPhotoRecordsByBlock,
+  createPhotoRecord,
+} from '@/lib/d1'
+import type { D1PhotoRecord } from '@/lib/d1'
+
+// Helper to convert photo record to camelCase response
+function toPhotoRecordResponse(photo: D1PhotoRecord) {
+  return {
+    id: photo.id,
+    workSessionId: photo.work_session_id,
+    blockId: photo.block_id,
+    imageData: photo.image_data,
+    createdAt: photo.created_at,
+  }
+}
 
 // GET /api/work-sessions/[id]/photos - 写真一覧を取得
 export async function GET(
@@ -18,24 +36,21 @@ export async function GET(
     const blockId = searchParams.get('blockId')
 
     // 作業セッションの存在確認
-    const workSession = await prisma.workSession.findUnique({
-      where: { id: workSessionId },
-    })
+    const workSession = await findWorkSessionById(workSessionId)
 
     if (!workSession) {
       return NextResponse.json({ error: '作業セッションが見つかりません' }, { status: 404 })
     }
 
     // 写真を取得
-    const photos = await prisma.photoRecord.findMany({
-      where: {
-        workSessionId,
-        ...(blockId ? { blockId } : {}),
-      },
-      orderBy: { createdAt: 'asc' },
-    })
+    let photos: D1PhotoRecord[]
+    if (blockId) {
+      photos = await findPhotoRecordsByBlock(workSessionId, blockId)
+    } else {
+      photos = await findPhotoRecordsBySession(workSessionId)
+    }
 
-    return NextResponse.json(photos)
+    return NextResponse.json(photos.map(toPhotoRecordResponse))
   } catch (error) {
     console.error('Failed to fetch photos:', error)
     return NextResponse.json(
@@ -68,15 +83,13 @@ export async function POST(
     }
 
     // 作業セッションの存在確認と権限チェック
-    const workSession = await prisma.workSession.findUnique({
-      where: { id: workSessionId },
-    })
+    const workSession = await findWorkSessionById(workSessionId)
 
     if (!workSession) {
       return NextResponse.json({ error: '作業セッションが見つかりません' }, { status: 404 })
     }
 
-    if (workSession.userId !== session.user.id) {
+    if (workSession.user_id !== session.user.id) {
       return NextResponse.json({ error: '権限がありません' }, { status: 403 })
     }
 
@@ -85,24 +98,20 @@ export async function POST(
     }
 
     // ブロックの存在確認
-    const block = await prisma.block.findUnique({
-      where: { id: blockId },
-    })
+    const block = await findBlockById(blockId)
 
     if (!block) {
       return NextResponse.json({ error: 'ブロックが見つかりません' }, { status: 404 })
     }
 
     // 写真を保存
-    const photo = await prisma.photoRecord.create({
-      data: {
-        workSessionId,
-        blockId,
-        imageData,
-      },
+    const photo = await createPhotoRecord({
+      work_session_id: workSessionId,
+      block_id: blockId,
+      image_data: imageData,
     })
 
-    return NextResponse.json(photo)
+    return NextResponse.json(toPhotoRecordResponse(photo))
   } catch (error) {
     console.error('Failed to save photo:', error)
     return NextResponse.json(

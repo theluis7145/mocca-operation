@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { findUserById, updateUser } from '@/lib/d1'
 import { hash } from 'bcryptjs'
 
 // POST /api/users/[id]/reset-password - パスワードをリセット（スーパー管理者のみ）
@@ -40,10 +40,7 @@ export async function POST(
     }
 
     // ユーザーの存在確認
-    const user = await prisma.user.findUnique({
-      where: { id },
-      select: { id: true, name: true, email: true },
-    })
+    const user = await findUserById(id)
 
     if (!user) {
       return NextResponse.json(
@@ -55,10 +52,7 @@ export async function POST(
     // パスワードをハッシュ化して更新
     const passwordHash = await hash(newPassword, 12)
 
-    await prisma.user.update({
-      where: { id },
-      data: { passwordHash },
-    })
+    await updateUser(id, { password_hash: passwordHash })
 
     return NextResponse.json({
       message: 'パスワードをリセットしました',
