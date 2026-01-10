@@ -1,0 +1,286 @@
+// Mocca Operation Manual System - Database Schema
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ユーザー
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  name          String
+  isSuperAdmin  Boolean   @default(false) @map("is_super_admin")
+  isActive      Boolean   @default(true) @map("is_active")
+  avatarUrl     String?   @map("avatar_url")
+  fontSize      FontSize  @default(MEDIUM) @map("font_size")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  businessAccess  BusinessAccess[]
+  createdManuals  Manual[]         @relation("CreatedManuals")
+  updatedManuals  Manual[]         @relation("UpdatedManuals")
+  createdVersions ManualVersion[]  @relation("VersionCreator")
+  blockMemos      BlockMemo[]
+  notifications   Notification[]
+  workSessions    WorkSession[]
+
+  @@map("users")
+}
+
+// 文字サイズ設定
+enum FontSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
+// 事業
+model Business {
+  id               String   @id @default(cuid())
+  name             String
+  displayNameLine1 String   @map("display_name_line1")
+  displayNameLine2 String   @map("display_name_line2")
+  description      String?
+  icon             String?
+  color            String?                          // 後方互換性のため残す
+  themeColors      String?  @map("theme_colors") // グラデーション用JSON文字列（最大3色）
+  sortOrder        Int      @default(0) @map("sort_order")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  businessAccess BusinessAccess[]
+  manuals        Manual[]
+
+  @@map("businesses")
+}
+
+// 事業アクセス権（ユーザーと事業の中間テーブル）
+model BusinessAccess {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  businessId String   @map("business_id")
+  role       Role
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, businessId])
+  @@map("business_access")
+}
+
+// 事業内での権限
+enum Role {
+  ADMIN
+  WORKER
+}
+
+// マニュアル
+model Manual {
+  id          String       @id @default(cuid())
+  businessId  String       @map("business_id")
+  title       String
+  description String?
+  status      ManualStatus @default(DRAFT)
+  adminOnly   Boolean      @default(false) @map("admin_only") // 管理者のみに公開
+  sortOrder   Int          @default(0) @map("sort_order") // 表示順序
+  isArchived  Boolean      @default(false) @map("is_archived") // アーカイブ済み
+  archivedAt  DateTime?    @map("archived_at") // アーカイブ日時
+  version     Int          @default(1)
+  createdBy   String       @map("created_by")
+  updatedBy   String       @map("updated_by")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  business     Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  creator      User            @relation("CreatedManuals", fields: [createdBy], references: [id])
+  updater      User            @relation("UpdatedManuals", fields: [updatedBy], references: [id])
+  blocks       Block[]
+  versions     ManualVersion[]
+  workSessions WorkSession[]
+
+  @@index([businessId, sortOrder])
+  @@index([businessId, isArchived])
+  @@map("manuals")
+}
+
+// マニュアルバージョン履歴
+model ManualVersion {
+  id          String   @id @default(cuid())
+  manualId    String   @map("manual_id")
+  version     Int
+  title       String
+  description String?
+  blocks      Json     // ブロックのスナップショット
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  comment     String?  // バージョンコメント（任意）
+
+  manual  Manual @relation(fields: [manualId], references: [id], onDelete: Cascade)
+  creator User   @relation("VersionCreator", fields: [createdBy], references: [id])
+
+  @@map("manual_versions")
+}
+
+// マニュアルステータス
+enum ManualStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// ブロック（作業手順）
+model Block {
+  id        String    @id @default(cuid())
+  manualId  String    @map("manual_id")
+  type      BlockType
+  content   Json
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  manual           Manual            @relation(fields: [manualId], references: [id], onDelete: Cascade)
+  memos            BlockMemo[]
+  workSessionNotes WorkSessionNote[]
+  photoRecords     PhotoRecord[]
+
+  @@index([manualId, sortOrder])
+  @@map("blocks")
+}
+
+// ブロックタイプ
+enum BlockType {
+  TEXT
+  IMAGE
+  VIDEO
+  WARNING
+  CHECKPOINT
+  PHOTO_RECORD // 写真撮影記録（作業中にスマホで撮影）
+}
+
+// 作業メモ（Phase 3で実装）
+model BlockMemo {
+  id         String         @id @default(cuid())
+  blockId    String         @map("block_id")
+  userId     String         @map("user_id")
+  content    String
+  visibility MemoVisibility @default(PRIVATE)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  block         Block          @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@map("block_memos")
+}
+
+// メモ公開設定
+enum MemoVisibility {
+  PRIVATE
+  PUBLIC
+}
+
+// お知らせ（Phase 3で実装）
+model Notification {
+  id                   String           @id @default(cuid())
+  userId               String           @map("user_id")
+  type                 NotificationType
+  title                String
+  message              String
+  linkUrl              String?          @map("link_url")
+  relatedMemoId        String?          @map("related_memo_id")
+  relatedWorkSessionId String?          @map("related_work_session_id")
+  isRead               Boolean          @default(false) @map("is_read")
+  createdAt            DateTime         @default(now()) @map("created_at")
+
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  relatedMemo        BlockMemo?   @relation(fields: [relatedMemoId], references: [id], onDelete: SetNull)
+  relatedWorkSession WorkSession? @relation(fields: [relatedWorkSessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// お知らせタイプ
+enum NotificationType {
+  NEW_PUBLIC_MEMO
+  WORK_SESSION_COMPLETED
+}
+
+// 作業セッションステータス
+enum WorkSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+// 作業セッション（マニュアル実行記録）
+model WorkSession {
+  id          String            @id @default(cuid())
+  manualId    String            @map("manual_id")
+  userId      String            @map("user_id")
+  status      WorkSessionStatus @default(IN_PROGRESS)
+  startedAt   DateTime          @default(now()) @map("started_at")
+  completedAt DateTime?         @map("completed_at")
+
+  manual        Manual             @relation(fields: [manualId], references: [id], onDelete: Cascade)
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes         WorkSessionNote[]
+  notifications Notification[]
+  photoRecords  PhotoRecord[]
+
+  @@index([manualId, startedAt])
+  @@index([userId, startedAt])
+  @@index([status, startedAt])
+  @@map("work_sessions")
+}
+
+// 作業メモ（各ステップへのフリーライティング）
+model WorkSessionNote {
+  id            String   @id @default(cuid())
+  workSessionId String   @map("work_session_id")
+  blockId       String   @map("block_id")
+  content       String
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  workSession WorkSession          @relation(fields: [workSessionId], references: [id], onDelete: Cascade)
+  block       Block                @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  photos      WorkSessionNotePhoto[]
+
+  @@map("work_session_notes")
+}
+
+// 申し送りメモの写真
+model WorkSessionNotePhoto {
+  id        String   @id @default(cuid())
+  noteId    String   @map("note_id")
+  imageData String   @map("image_data") // Base64エンコードされた画像データ
+  createdAt DateTime @default(now()) @map("created_at")
+
+  note WorkSessionNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@map("work_session_note_photos")
+}
+
+// 写真記録（作業中に撮影した写真）
+model PhotoRecord {
+  id            String   @id @default(cuid())
+  workSessionId String   @map("work_session_id")
+  blockId       String   @map("block_id")
+  imageData     String   @map("image_data") // Base64エンコードされた画像データ
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  workSession WorkSession @relation(fields: [workSessionId], references: [id], onDelete: Cascade)
+  block       Block       @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@map("photo_records")
+}

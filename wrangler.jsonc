@@ -1,0 +1,55 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mocca-operation",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  // workers.devサブドメインを有効化
+  "workers_dev": true,
+
+  // 静的アセット設定
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  // サービスバインディング（自己参照）
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "mocca-operation"
+    }
+  ],
+
+  // D1データベース
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mocca-operation-db",
+      "database_id": "029f4d80-dcca-4b72-8430-612f4991b4aa"
+    }
+  ],
+
+  // R2バケット（画像ストレージ用、後でバケット名を設定）
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "mocca-operation-images"
+    }
+  ],
+
+  // インクリメンタルキャッシュ用R2（オプション）
+  // "r2_buckets": [
+  //   {
+  //     "binding": "NEXT_INC_CACHE_R2_BUCKET",
+  //     "bucket_name": "mocca-operation-cache"
+  //   }
+  // ],
+
+  // 環境変数
+  "vars": {
+    "NEXTJS_ENV": "production",
+    "R2_PUBLIC_DOMAIN": "YOUR_R2_PUBLIC_DOMAIN"
+  }
+}
