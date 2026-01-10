@@ -1,9 +1,8 @@
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import { compare } from 'bcryptjs'
-import { findUserByEmail } from '@/lib/d1'
+import { findUserByEmail, type D1FontSize } from '@/lib/d1'
 import { authConfig } from '@/lib/auth.config'
-import type { FontSize } from '@prisma/client'
 
 declare module 'next-auth' {
   interface Session {
@@ -12,7 +11,7 @@ declare module 'next-auth' {
       email: string
       name: string
       isSuperAdmin: boolean
-      fontSize: FontSize
+      fontSize: D1FontSize
     }
   }
 
@@ -21,7 +20,7 @@ declare module 'next-auth' {
     email: string
     name: string
     isSuperAdmin: boolean
-    fontSize: FontSize
+    fontSize: D1FontSize
   }
 }
 
@@ -62,7 +61,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           email: user.email,
           name: user.name,
           isSuperAdmin: Boolean(user.is_super_admin),
-          fontSize: user.font_size as FontSize,
+          fontSize: user.font_size,
         }
       },
     }),
