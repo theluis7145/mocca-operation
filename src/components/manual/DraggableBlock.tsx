@@ -27,7 +27,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { optimizeImage, formatFileSize } from '@/lib/image-optimizer'
 import type { Block } from '@prisma/client'
-import type { TextBlockContent, CheckItem } from '@/types'
+import type { CheckItem } from '@/types'
 
 interface DraggableBlockProps {
   block: Block

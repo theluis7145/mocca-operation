@@ -484,7 +484,6 @@ const PhotoRecordBlock = memo(function PhotoRecordBlock({ content, index, blockI
       const userAgent = navigator.userAgent.toLowerCase()
       const mobileKeywords = ['android', 'iphone', 'ipad', 'ipod', 'mobile', 'tablet']
       const isMobileDevice = mobileKeywords.some(keyword => userAgent.includes(keyword))
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsMobile(isMobileDevice)
     }
   }, [])
@@ -492,7 +491,6 @@ const PhotoRecordBlock = memo(function PhotoRecordBlock({ content, index, blockI
   // 作業セッションの写真を取得
   useEffect(() => {
     if (workSessionId && isWorkSessionActive) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchPhotos()
     }
   }, [workSessionId, isWorkSessionActive, fetchPhotos])

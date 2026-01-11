@@ -10,7 +10,6 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useUserStore, fontSizeConfig } from '@/stores/useUserStore'
-import { useBusinessStore } from '@/stores/useBusinessStore'
 import type { FontSize } from '@prisma/client'
 import { cn } from '@/lib/utils'
 
@@ -24,10 +23,6 @@ export function HamburgerMenu({ unreadNotificationCount = 0, hasThemeColor = fal
   const { data: session } = useSession()
   const [open, setOpen] = useState(false)
   const { fontSize, setFontSize } = useUserStore()
-  const { selectedBusiness } = useBusinessStore()
-
-  // 管理者かどうか（スーパー管理者またはこの事業の管理者）
-  const isAdmin = session?.user?.isSuperAdmin
 
   const handleSignOut = async () => {
     await signOut({ callbackUrl: '/login' })

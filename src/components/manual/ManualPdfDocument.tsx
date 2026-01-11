@@ -237,6 +237,7 @@ const BlockRenderer = ({ block, index }: { block: Block; index: number }) => {
         <View style={styles.imageBlock}>
           {content.url ? (
             <>
+              {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image doesn't support alt prop */}
               <Image src={content.url} style={styles.image} />
               {content.alt && (
                 <Text style={styles.imageCaption}>{content.alt}</Text>

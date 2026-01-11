@@ -5,7 +5,7 @@ import {
   findUserById,
   findBusinessAccessesByUser,
 } from '@/lib/d1'
-import type { D1WorkSession, D1User, D1Manual, D1Business, D1WorkSessionNote } from '@/lib/d1'
+import type { D1WorkSession } from '@/lib/d1'
 
 // Helper to convert snake_case D1 fields to camelCase for API response
 function toWorkSessionResponse(ws: D1WorkSession & {

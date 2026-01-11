@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import {
   getD1Database,
-  findWorkSessionNoteById,
   updateWorkSessionNote,
   deleteWorkSessionNote,
 } from '@/lib/d1'
-import type { D1WorkSessionNote, D1WorkSession, D1Block } from '@/lib/d1'
+import type { D1WorkSessionNote } from '@/lib/d1'
 
 type RouteContext = {
   params: Promise<{ id: string; noteId: string }>

@@ -5,7 +5,7 @@ import {
   completeWorkSession,
   createNotification,
 } from '@/lib/d1'
-import type { D1WorkSession, D1Block, D1WorkSessionNote, D1User } from '@/lib/d1'
+import type { D1WorkSession, D1Block, D1WorkSessionNote } from '@/lib/d1'
 
 type RouteContext = {
   params: Promise<{ id: string }>

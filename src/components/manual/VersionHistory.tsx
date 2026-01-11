@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { History, RotateCcw, Eye, Loader2, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,7 +27,6 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
 
 interface Version {
   id: string
@@ -79,13 +78,7 @@ export function VersionHistory({
   const [isDeleting, setIsDeleting] = useState(false)
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchVersions()
-    }
-  }, [isOpen, manualId])
-
-  const fetchVersions = async () => {
+  const fetchVersions = useCallback(async () => {
     setIsLoading(true)
     try {
       const response = await fetch(`/api/manuals/${manualId}/versions`)
@@ -99,7 +92,13 @@ export function VersionHistory({
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [manualId])
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchVersions()
+    }
+  }, [isOpen, fetchVersions])
 
   const handleRestore = async () => {
     if (!selectedVersion) return
@@ -119,7 +118,7 @@ export function VersionHistory({
       setIsRestoreDialogOpen(false)
       setIsOpen(false)
       onRestore?.()
-    } catch (error) {
+    } catch {
       toast.error('バージョンの復元に失敗しました')
     } finally {
       setIsRestoring(false)
@@ -145,7 +144,7 @@ export function VersionHistory({
       setSelectedVersion(null)
       // バージョン一覧を再取得
       fetchVersions()
-    } catch (error) {
+    } catch {
       toast.error('バージョンの削除に失敗しました')
     } finally {
       setIsDeleting(false)

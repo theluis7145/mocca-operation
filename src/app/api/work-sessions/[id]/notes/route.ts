@@ -5,11 +5,10 @@ import {
   findWorkSessionById,
   findUserById,
   findBlockById,
-  findWorkSessionNotesBySession,
   createWorkSessionNote,
   updateWorkSessionNote,
 } from '@/lib/d1'
-import type { D1WorkSessionNote, D1WorkSessionNotePhoto, D1Block } from '@/lib/d1'
+import type { D1WorkSessionNote, D1WorkSessionNotePhoto } from '@/lib/d1'
 
 type RouteContext = {
   params: Promise<{ id: string }>

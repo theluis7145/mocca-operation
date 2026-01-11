@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { Search, FileText, AlertTriangle, CheckCircle, X, Loader2, Clock, Trash2 } from 'lucide-react'
+import { Search, FileText, AlertTriangle, CheckCircle, X, Loader2, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -60,7 +60,7 @@ interface SearchDialogProps {
   hasThemeColor?: boolean
 }
 
-export function SearchDialog({ open, onOpenChange, hasThemeColor }: SearchDialogProps) {
+export function SearchDialog({ open, onOpenChange }: Omit<SearchDialogProps, 'hasThemeColor'>) {
   const router = useRouter()
   const { data: session } = useSession()
   const { selectedBusiness } = useBusinessStore()
