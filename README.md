@@ -64,6 +64,9 @@ npm run test:all
 npm install
 npm run dev
 
+Deployed on Cloudflare Workers with CI (GitHub Actions).  
+Unit tests (Jest) and E2E tests (Playwright) run automatically on every push.
+
 This project is currently published without an open-source license.
 Commercial use, redistribution, or resale may require permission from the author.
 
