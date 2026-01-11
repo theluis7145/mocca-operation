@@ -65,3 +65,5 @@ This project is currently published without an open-source license.
 Commercial use, redistribution, or resale may require permission from the author.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+> Note: Some pages intentionally use `<img>` (instead of `next/image`) due to viewer/preview behavior and compatibility needs. ESLint warnings are allowed for this case.
