@@ -18,6 +18,13 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
     "test-results/**",
   ]),
+  // Custom rules
+  {
+    rules: {
+      // <img> is intentionally used for dynamic external images (R2, etc.)
+      "@next/next/no-img-element": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

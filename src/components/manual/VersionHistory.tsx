@@ -377,7 +377,7 @@ export function VersionHistory({
                     {block.type === 'IMAGE' && (
                       <div className="space-y-2">
                         {(block.content as { url?: string }).url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
+                           
                           <img
                             src={(block.content as { url?: string }).url}
                             alt={(block.content as { alt?: string }).alt || ''}

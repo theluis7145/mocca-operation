@@ -337,7 +337,7 @@ export function DraggableBlock({
             {/* プレビュー */}
             {editUrl && (
               <div className="border rounded p-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+                { }
                 <img src={editUrl} alt="プレビュー" className="max-h-40 rounded" />
               </div>
             )}
@@ -604,7 +604,7 @@ export function DraggableBlock({
               {/* 参考画像プレビュー */}
               {editPhotoReferenceImage && (
                 <div className="mt-2 relative inline-block">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  { }
                   <img
                     src={editPhotoReferenceImage}
                     alt="参考画像"
@@ -735,7 +735,7 @@ function BlockPreview({ block }: { block: Block }) {
       const imageCaption = content.caption as string | undefined
       return (
         <div className="space-y-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          { }
           <img
             src={imageUrl}
             alt={imageAlt}
@@ -796,7 +796,7 @@ function BlockPreview({ block }: { block: Block }) {
           {(content.referenceImageUrl as string) && (
             <div className="mt-2">
               <p className="text-xs text-muted-foreground mb-1">参考画像:</p>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              { }
               <img
                 src={content.referenceImageUrl as string}
                 alt="参考画像"
@@ -1042,7 +1042,7 @@ function SortableCheckItem({ id, item, onTextChange, onImageChange, onVideoChang
           {/* プレビュー */}
           {item.imageUrl && (
             <div className="border rounded p-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              { }
               <img
                 src={item.imageUrl}
                 alt="プレビュー"

@@ -143,7 +143,7 @@ const ImageBlock = memo(function ImageBlock({ content, index, blockId, showMemo,
             onClick={handleOpenImage}
             className="cursor-pointer w-full"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+            { }
             <img
               src={content.url}
               alt={content.alt || ''}
@@ -173,7 +173,7 @@ const ImageBlock = memo(function ImageBlock({ content, index, blockId, showMemo,
             <DialogTitle className="text-lg">{content.caption || content.alt || '画像'}</DialogTitle>
           </DialogHeader>
           <div className="mt-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+            { }
             <img
               src={content.url}
               alt={content.alt || ''}
@@ -417,7 +417,7 @@ const CheckpointBlock = memo(function CheckpointBlock({ content, index, blockId,
           </DialogHeader>
           {viewingImage && (
             <div className="mt-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              { }
               <img
                 src={viewingImage.url}
                 alt={viewingImage.text}
@@ -616,7 +616,7 @@ const PhotoRecordBlock = memo(function PhotoRecordBlock({ content, index, blockI
                   onClick={handleViewReferenceImage}
                   className="cursor-pointer"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  { }
                   <img
                     src={content.referenceImageUrl}
                     alt="参考画像"
@@ -634,7 +634,7 @@ const PhotoRecordBlock = memo(function PhotoRecordBlock({ content, index, blockI
                   <div className="grid grid-cols-2 gap-2">
                     {photos.map((photo) => (
                       <div key={photo.id} className="relative group">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        { }
                         <img
                           src={photo.imageData}
                           alt="撮影した写真"
@@ -725,7 +725,7 @@ const PhotoRecordBlock = memo(function PhotoRecordBlock({ content, index, blockI
           </DialogHeader>
           {viewingPhoto && (
             <div className="mt-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              { }
               <img
                 src={viewingPhoto}
                 alt={content.title}

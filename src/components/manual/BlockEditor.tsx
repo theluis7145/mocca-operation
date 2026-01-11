@@ -322,7 +322,7 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
           {url && (
             <div className="border rounded-lg p-2">
               <p className="text-xs text-muted-foreground mb-2">プレビュー:</p>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              { }
               <img
                 src={url}
                 alt="プレビュー"
