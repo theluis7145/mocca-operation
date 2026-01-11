@@ -17,6 +17,7 @@ const eslintConfig = defineConfig([
     // Test output
     "playwright-report/**",
     "test-results/**",
+    "coverage/**",
   ]),
   // Custom rules
   {
