@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import { AlertTriangle, CheckCircle, Info, Check, Camera, Video, Smartphone, Image as ImageIcon, Trash2, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,8 @@ import {
 import { cn } from '@/lib/utils'
 import { BlockMemo } from './BlockMemo'
 import { WorkSessionNote } from './WorkSessionNote'
+import { toast } from 'sonner'
+import { optimizeImage } from '@/lib/image-optimizer'
 import type { Block } from '@prisma/client'
 import type {
   TextBlockContent,
@@ -88,7 +90,7 @@ interface BlockTypeProps {
   isWorkSessionActive: boolean
 }
 
-function TextBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: TextBlockContent }) {
+const TextBlock = memo(function TextBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: TextBlockContent }) {
   return (
     <Card id={`block-${blockId}`} className="transition-all duration-300 scroll-mt-24">
       <CardHeader className="pb-2">
@@ -118,10 +120,13 @@ function TextBlock({ content, index, blockId, showMemo, workSessionId, workSessi
       </CardContent>
     </Card>
   )
-}
+})
 
-function ImageBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: ImageBlockContent }) {
+const ImageBlock = memo(function ImageBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: ImageBlockContent }) {
   const [viewingImage, setViewingImage] = useState(false)
+
+  const handleOpenImage = useCallback(() => setViewingImage(true), [])
+  const handleCloseImage = useCallback(() => setViewingImage(false), [])
 
   return (
     <>
@@ -135,7 +140,7 @@ function ImageBlock({ content, index, blockId, showMemo, workSessionId, workSess
         <CardContent className="space-y-2">
           <button
             type="button"
-            onClick={() => setViewingImage(true)}
+            onClick={handleOpenImage}
             className="cursor-pointer w-full"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -162,7 +167,7 @@ function ImageBlock({ content, index, blockId, showMemo, workSessionId, workSess
       </Card>
 
       {/* 画像拡大表示モーダル */}
-      <Dialog open={viewingImage} onOpenChange={() => setViewingImage(false)}>
+      <Dialog open={viewingImage} onOpenChange={handleCloseImage}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="text-lg">{content.caption || content.alt || '画像'}</DialogTitle>
@@ -179,9 +184,9 @@ function ImageBlock({ content, index, blockId, showMemo, workSessionId, workSess
       </Dialog>
     </>
   )
-}
+})
 
-function VideoBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: VideoBlockContent }) {
+const VideoBlock = memo(function VideoBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: VideoBlockContent }) {
   return (
     <Card id={`block-${blockId}`} className="transition-all duration-300 scroll-mt-24">
       <CardHeader className="pb-2">
@@ -216,9 +221,9 @@ function VideoBlock({ content, index, blockId, showMemo, workSessionId, workSess
       </CardContent>
     </Card>
   )
-}
+})
 
-function WarningBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: WarningBlockContent }) {
+const WarningBlock = memo(function WarningBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: WarningBlockContent }) {
   const levelConfig = {
     info: {
       icon: Info,
@@ -277,9 +282,9 @@ function WarningBlock({ content, index, blockId, showMemo, workSessionId, workSe
       </CardContent>
     </Card>
   )
-}
+})
 
-function CheckpointBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: CheckpointBlockContent }) {
+const CheckpointBlock = memo(function CheckpointBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: CheckpointBlockContent }) {
   const [checkedItems, setCheckedItems] = useState<Set<number>>(new Set())
   const [viewingImage, setViewingImage] = useState<{ url: string; text: string } | null>(null)
   const [viewingVideo, setViewingVideo] = useState<{ videoId: string; text: string } | null>(null)
@@ -289,7 +294,7 @@ function CheckpointBlock({ content, index, blockId, showMemo, workSessionId, wor
     typeof item === 'string' ? { text: item } : item
   )
 
-  const toggleItem = (itemIndex: number) => {
+  const toggleItem = useCallback((itemIndex: number) => {
     setCheckedItems((prev) => {
       const newSet = new Set(prev)
       if (newSet.has(itemIndex)) {
@@ -299,9 +304,9 @@ function CheckpointBlock({ content, index, blockId, showMemo, workSessionId, wor
       }
       return newSet
     })
-  }
+  }, [])
 
-  const extractYouTubeId = (url: string): string | null => {
+  const extractYouTubeId = useCallback((url: string): string | null => {
     const patterns = [
       /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
     ]
@@ -310,16 +315,16 @@ function CheckpointBlock({ content, index, blockId, showMemo, workSessionId, wor
       if (match) return match[1]
     }
     return null
-  }
+  }, [])
 
-  const handleImageClick = (e: React.MouseEvent, item: CheckItem) => {
+  const handleImageClick = useCallback((e: React.MouseEvent, item: CheckItem) => {
     e.stopPropagation()
     if (item.imageUrl) {
       setViewingImage({ url: item.imageUrl, text: item.text })
     }
-  }
+  }, [])
 
-  const handleVideoClick = (e: React.MouseEvent, item: CheckItem) => {
+  const handleVideoClick = useCallback((e: React.MouseEvent, item: CheckItem) => {
     e.stopPropagation()
     if (item.videoUrl) {
       const videoId = extractYouTubeId(item.videoUrl)
@@ -327,7 +332,10 @@ function CheckpointBlock({ content, index, blockId, showMemo, workSessionId, wor
         setViewingVideo({ videoId, text: item.text })
       }
     }
-  }
+  }, [extractYouTubeId])
+
+  const handleCloseImage = useCallback(() => setViewingImage(null), [])
+  const handleCloseVideo = useCallback(() => setViewingVideo(null), [])
 
   return (
     <>
@@ -402,7 +410,7 @@ function CheckpointBlock({ content, index, blockId, showMemo, workSessionId, wor
       </Card>
 
       {/* 画像表示モーダル */}
-      <Dialog open={!!viewingImage} onOpenChange={() => setViewingImage(null)}>
+      <Dialog open={!!viewingImage} onOpenChange={handleCloseImage}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="text-lg">{viewingImage?.text}</DialogTitle>
@@ -421,7 +429,7 @@ function CheckpointBlock({ content, index, blockId, showMemo, workSessionId, wor
       </Dialog>
 
       {/* 動画表示モーダル */}
-      <Dialog open={!!viewingVideo} onOpenChange={() => setViewingVideo(null)}>
+      <Dialog open={!!viewingVideo} onOpenChange={handleCloseVideo}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="text-lg">{viewingVideo?.text}</DialogTitle>
@@ -441,7 +449,7 @@ function CheckpointBlock({ content, index, blockId, showMemo, workSessionId, wor
       </Dialog>
     </>
   )
-}
+})
 
 interface PhotoRecord {
   id: string
@@ -449,7 +457,7 @@ interface PhotoRecord {
   createdAt: string
 }
 
-function PhotoRecordBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: PhotoRecordBlockContent }) {
+const PhotoRecordBlock = memo(function PhotoRecordBlock({ content, index, blockId, showMemo, workSessionId, workSessionNote, isWorkSessionActive }: BlockTypeProps & { content: PhotoRecordBlockContent }) {
   const [photos, setPhotos] = useState<PhotoRecord[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
@@ -458,7 +466,9 @@ function PhotoRecordBlock({ content, index, blockId, showMemo, workSessionId, wo
   const fetchPhotos = useCallback(async () => {
     if (!workSessionId) return
     try {
-      const response = await fetch(`/api/work-sessions/${workSessionId}/photos?blockId=${blockId}`)
+      const response = await fetch(`/api/work-sessions/${workSessionId}/photos?blockId=${blockId}`, {
+        credentials: 'include',
+      })
       if (response.ok) {
         const data = await response.json()
         setPhotos(data)
@@ -489,41 +499,75 @@ function PhotoRecordBlock({ content, index, blockId, showMemo, workSessionId, wo
 
   const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !workSessionId) return
+    console.log('[PhotoRecord] handleCapture called', { file: file?.name, size: file?.size, workSessionId })
+
+    if (!file || !workSessionId) {
+      console.log('[PhotoRecord] Early return - no file or workSessionId')
+      return
+    }
 
     setIsLoading(true)
     try {
-      // ファイルをBase64に変換
-      const reader = new FileReader()
-      reader.onload = async () => {
-        const imageData = reader.result as string
-
-        const response = await fetch(`/api/work-sessions/${workSessionId}/photos`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ blockId, imageData }),
-        })
-
-        if (response.ok) {
-          const newPhoto = await response.json()
-          setPhotos(prev => [...prev, newPhoto])
+      // 画像を最適化（失敗した場合は元のファイルを使用）
+      let fileToUpload = file
+      try {
+        const { file: optimizedFile, wasOptimized } = await optimizeImage(file)
+        if (wasOptimized) {
+          toast.info('画像を最適化しました')
+          fileToUpload = optimizedFile
         }
-        setIsLoading(false)
+        console.log('[PhotoRecord] Optimization result:', { wasOptimized, originalSize: file.size, optimizedSize: optimizedFile.size })
+      } catch (optimizeError) {
+        console.warn('[PhotoRecord] Optimization failed, using original file:', optimizeError)
       }
-      reader.readAsDataURL(file)
-    } catch {
-      setIsLoading(false)
-    }
 
-    // inputをリセット
-    e.target.value = ''
+      // ファイルをBase64に変換
+      console.log('[PhotoRecord] Converting to Base64...')
+      const reader = new FileReader()
+      const imageData = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          console.log('[PhotoRecord] Base64 conversion complete, length:', (reader.result as string)?.length)
+          resolve(reader.result as string)
+        }
+        reader.onerror = () => reject(new Error('画像の読み込みに失敗しました'))
+        reader.readAsDataURL(fileToUpload)
+      })
+
+      console.log('[PhotoRecord] Sending POST request to /api/work-sessions/' + workSessionId + '/photos')
+      const response = await fetch(`/api/work-sessions/${workSessionId}/photos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ blockId, imageData }),
+      })
+
+      console.log('[PhotoRecord] Response status:', response.status)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error('[PhotoRecord] Error response:', errorData)
+        throw new Error(errorData.error || '写真のアップロードに失敗しました')
+      }
+
+      const newPhoto = await response.json()
+      console.log('[PhotoRecord] Photo saved successfully:', newPhoto.id)
+      setPhotos(prev => [...prev, newPhoto])
+      toast.success('写真を保存しました')
+    } catch (error) {
+      console.error('[PhotoRecord] Photo capture error:', error)
+      toast.error(error instanceof Error ? error.message : '写真のアップロードに失敗しました')
+    } finally {
+      setIsLoading(false)
+      // inputをリセット
+      e.target.value = ''
+    }
   }
 
-  const handleDelete = async (photoId: string) => {
+  const handleDelete = useCallback(async (photoId: string) => {
     if (!workSessionId) return
     try {
       const response = await fetch(`/api/work-sessions/${workSessionId}/photos/${photoId}`, {
         method: 'DELETE',
+        credentials: 'include',
       })
       if (response.ok) {
         setPhotos(prev => prev.filter(p => p.id !== photoId))
@@ -531,7 +575,15 @@ function PhotoRecordBlock({ content, index, blockId, showMemo, workSessionId, wo
     } catch {
       // エラー時は無視
     }
-  }
+  }, [workSessionId])
+
+  const handleClosePhoto = useCallback(() => setViewingPhoto(null), [])
+  const handleViewPhoto = useCallback((imageData: string) => setViewingPhoto(imageData), [])
+  const handleViewReferenceImage = useCallback(() => {
+    if (content.referenceImageUrl) {
+      setViewingPhoto(content.referenceImageUrl)
+    }
+  }, [content.referenceImageUrl])
 
   return (
     <>
@@ -563,7 +615,7 @@ function PhotoRecordBlock({ content, index, blockId, showMemo, workSessionId, wo
                 </p>
                 <button
                   type="button"
-                  onClick={() => setViewingPhoto(content.referenceImageUrl!)}
+                  onClick={handleViewReferenceImage}
                   className="cursor-pointer"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -589,7 +641,7 @@ function PhotoRecordBlock({ content, index, blockId, showMemo, workSessionId, wo
                           src={photo.imageData}
                           alt="撮影した写真"
                           className="w-full h-32 object-cover rounded-lg cursor-pointer"
-                          onClick={() => setViewingPhoto(photo.imageData)}
+                          onClick={() => handleViewPhoto(photo.imageData)}
                         />
                         <Button
                           variant="destructive"
@@ -668,7 +720,7 @@ function PhotoRecordBlock({ content, index, blockId, showMemo, workSessionId, wo
       </Card>
 
       {/* 写真表示モーダル */}
-      <Dialog open={!!viewingPhoto} onOpenChange={() => setViewingPhoto(null)}>
+      <Dialog open={!!viewingPhoto} onOpenChange={handleClosePhoto}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="text-lg">{content.title}</DialogTitle>
@@ -687,4 +739,4 @@ function PhotoRecordBlock({ content, index, blockId, showMemo, workSessionId, wo
       </Dialog>
     </>
   )
-}
+})

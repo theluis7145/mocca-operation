@@ -184,10 +184,10 @@ export function WorkCompleteDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isCompleting}>
+          <Button variant="outline" onClick={onClose} disabled={isCompleting} data-testid="complete-dialog-cancel">
             キャンセル
           </Button>
-          <Button onClick={handleComplete} disabled={isCompleting}>
+          <Button onClick={handleComplete} disabled={isCompleting} data-testid="complete-dialog-confirm">
             {isCompleting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />

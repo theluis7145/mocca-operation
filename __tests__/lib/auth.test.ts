@@ -5,8 +5,6 @@
  * ここでは認証ロジックの重要な部分と、モック可能な認証ヘルパーをテストします。
  */
 
-import { NextRequest, NextResponse } from 'next/server'
-
 // ミドルウェアのルート判定ロジックをテスト用に抽出
 function shouldSkipAuth(pathname: string): boolean {
   // api/upload はスキップ

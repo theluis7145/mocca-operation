@@ -17,7 +17,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { ArrowLeft, Eye, EyeOff, Plus, FileText, Copy, Trash2, MoreHorizontal, Check, Save, History, Shield, Users, Archive } from 'lucide-react'
+import { ArrowLeft, Eye, EyeOff, Plus, FileText, Copy, MoreHorizontal, Check, Save, History, Shield, Users, Archive } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,

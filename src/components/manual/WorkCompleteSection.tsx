@@ -71,7 +71,7 @@ export function WorkCompleteSection({
 
   return (
     <>
-      <div className="mt-8 p-6 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 rounded-lg border border-green-200 dark:border-green-800">
+      <div className="mt-8 p-6 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 rounded-lg border border-green-200 dark:border-green-800" data-testid="work-complete-section">
         <div className="text-center">
           <h3 className="text-lg font-semibold text-green-800 dark:text-green-200 mb-2">
             全てのステップを確認しましたか？
@@ -84,6 +84,7 @@ export function WorkCompleteSection({
             onClick={handleShowCompleteDialog}
             disabled={isLoadingNotes}
             className="bg-green-600 hover:bg-green-700 text-white"
+            data-testid="complete-work-session-button"
           >
             {isLoadingNotes ? (
               <>

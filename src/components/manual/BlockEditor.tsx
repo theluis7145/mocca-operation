@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { optimizeImage, formatFileSize } from '@/lib/image-optimizer'
 import { toast } from 'sonner'
 
 type BlockType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'WARNING' | 'CHECKPOINT' | 'PHOTO_RECORD'
@@ -189,12 +190,6 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
           return
         }
 
-        // ファイルサイズチェック（10MB）
-        if (file.size > 10 * 1024 * 1024) {
-          toast.error('ファイルサイズが10MBを超えています')
-          return
-        }
-
         // ファイルタイプチェック
         const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
         if (!allowedTypes.includes(file.type)) {
@@ -204,8 +199,15 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
 
         setIsUploading(true)
         try {
+          // 画像を最適化（10MB超の場合は自動でリサイズ・圧縮）
+          const optimizeResult = await optimizeImage(file)
+
+          if (optimizeResult.wasOptimized) {
+            toast.info(`画像を最適化しました: ${formatFileSize(optimizeResult.originalSize)} → ${formatFileSize(optimizeResult.optimizedSize)}`)
+          }
+
           const formData = new FormData()
-          formData.append('file', file)
+          formData.append('file', optimizeResult.file)
           formData.append('businessId', businessId)
           formData.append('manualId', manualId)
 

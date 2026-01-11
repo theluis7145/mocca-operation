@@ -28,8 +28,24 @@ const nextConfig: NextConfig = {
   // 実験的機能
   experimental: {
     // コンポーネントのプリロード最適化
-    optimizePackageImports: ['lucide-react', '@dnd-kit/core', '@dnd-kit/sortable'],
+    optimizePackageImports: [
+      'lucide-react',
+      '@dnd-kit/core',
+      '@dnd-kit/sortable',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-select',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-toast',
+      'date-fns',
+    ],
   },
+  // 圧縮を有効化
+  compress: true,
+  // パワードバイヘッダーを無効化（セキュリティ）
+  poweredByHeader: false,
+  // React Strict Mode
+  reactStrictMode: true,
 };
 
 export default nextConfig;

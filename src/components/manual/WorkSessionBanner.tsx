@@ -88,7 +88,7 @@ export function WorkSessionBanner({
   // 作業中でない場合
   if (!workSession) {
     return (
-      <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-3 shadow-md">
+      <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-3 shadow-md" data-testid="work-session-banner-idle">
         <div className="flex items-center justify-between max-w-4xl mx-auto">
           <div className="flex items-center gap-3">
             <Play className="h-5 w-5" />
@@ -99,6 +99,7 @@ export function WorkSessionBanner({
             size="sm"
             onClick={handleStartSession}
             disabled={isStarting}
+            data-testid="start-work-session-button"
           >
             {isStarting ? (
               <>
@@ -120,7 +121,7 @@ export function WorkSessionBanner({
   // 作業中の場合
   return (
     <>
-      <div className="bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-3 shadow-md">
+      <div className="bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-3 shadow-md" data-testid="work-session-banner-active">
         <div className="flex items-center justify-between max-w-4xl mx-auto">
           <div className="flex items-center gap-3">
             <Play className="h-5 w-5" />
@@ -131,6 +132,7 @@ export function WorkSessionBanner({
             size="sm"
             className="text-white hover:bg-white/20"
             onClick={() => setShowCancelDialog(true)}
+            data-testid="cancel-work-session-button"
           >
             <XCircle className="h-4 w-4 mr-2" />
             キャンセル

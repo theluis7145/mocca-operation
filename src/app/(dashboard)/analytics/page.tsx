@@ -54,7 +54,7 @@ interface AnalyticsData {
 
 export default function AnalyticsPage() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { status } = useSession()
   const { businesses } = useBusinessStore()
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [isLoading, setIsLoading] = useState(false)

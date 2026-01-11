@@ -40,6 +40,7 @@ export function DraggableManualCard({
     <Card
       ref={setNodeRef}
       style={style}
+      data-testid={`manual-card-${manual.id}`}
       className={cn(
         'transition-all duration-200',
         'border-l-4',

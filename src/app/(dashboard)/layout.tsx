@@ -29,8 +29,8 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { data: session, status } = useSession()
-  const { businesses, setBusinesses, setIsLoading, setError, selectedBusiness } =
+  const { status } = useSession()
+  const { setBusinesses, setIsLoading, setError, selectedBusiness } =
     useBusinessStore()
   const { fontSize } = useUserStore()
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
@@ -114,12 +114,6 @@ export default function DashboardLayout({
     // 新しいフォントサイズクラスを追加
     body.classList.add(fontSizeConfig[fontSize].className)
   }, [fontSize])
-
-  // 管理者かどうかを判定
-  const isAdmin =
-    session?.user?.isSuperAdmin ||
-    (selectedBusiness &&
-      businesses.some((b) => b.id === selectedBusiness.id))
 
   if (status === 'loading') {
     return (

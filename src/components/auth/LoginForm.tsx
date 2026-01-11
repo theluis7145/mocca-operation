@@ -45,7 +45,14 @@ export function LoginForm() {
       })
 
       if (result?.error) {
-        setError('メールアドレスまたはパスワードが正しくありません')
+        // エラータイプに応じたメッセージ表示
+        if (result.error === 'CredentialsSignin') {
+          setError('メールアドレスまたはパスワードが正しくありません')
+        } else if (result.error === 'Configuration') {
+          setError('認証設定に問題があります。管理者にお問い合わせください。')
+        } else {
+          setError('メールアドレスまたはパスワードが正しくありません')
+        }
         return
       }
 
@@ -59,7 +66,7 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md" data-testid="login-card">
       <CardHeader className="space-y-1">
         <CardTitle className="text-2xl font-bold text-center">
           ログイン
@@ -69,9 +76,9 @@ export function LoginForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" data-testid="login-form">
           {error && (
-            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">
+            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md" data-testid="login-error">
               {error}
             </div>
           )}
@@ -82,12 +89,13 @@ export function LoginForm() {
               id="email"
               type="email"
               placeholder="email@example.com"
+              data-testid="email-input"
               {...register('email')}
               disabled={isLoading}
               autoComplete="email"
             />
             {errors.email && (
-              <p className="text-sm text-destructive">{errors.email.message}</p>
+              <p className="text-sm text-destructive" data-testid="email-error">{errors.email.message}</p>
             )}
           </div>
 
@@ -96,16 +104,17 @@ export function LoginForm() {
             <Input
               id="password"
               type="password"
+              data-testid="password-input"
               {...register('password')}
               disabled={isLoading}
               autoComplete="current-password"
             />
             {errors.password && (
-              <p className="text-sm text-destructive">{errors.password.message}</p>
+              <p className="text-sm text-destructive" data-testid="password-error">{errors.password.message}</p>
             )}
           </div>
 
-          <Button type="submit" className="w-full" disabled={isLoading}>
+          <Button type="submit" className="w-full" disabled={isLoading} data-testid="login-button">
             {isLoading ? 'ログイン中...' : 'ログイン'}
           </Button>
         </form>

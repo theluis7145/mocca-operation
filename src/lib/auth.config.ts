@@ -2,6 +2,8 @@ import type { NextAuthConfig } from 'next-auth'
 
 // Edge Runtime 互換の認証設定（ミドルウェア用）
 export const authConfig: NextAuthConfig = {
+  // Cloudflare Workers環境でのホスト検証を信頼
+  trustHost: true,
   pages: {
     signIn: '/login',
   },

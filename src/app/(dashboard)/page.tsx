@@ -24,7 +24,7 @@ import { Building2, FileText, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { useBusinessStore, type BusinessWithManuals } from '@/stores/useBusinessStore'
+import { useBusinessStore } from '@/stores/useBusinessStore'
 import { DraggableManualCard } from '@/components/manual/DraggableManualCard'
 import type { Manual } from '@prisma/client'
 
@@ -184,13 +184,13 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="p-4 md:p-8" data-testid="dashboard-page">
       {/* ウェルカムメッセージ */}
       <div className="mb-6 md:mb-8">
-        <h1 className="text-xl md:text-2xl font-bold">
+        <h1 className="text-xl md:text-2xl font-bold" data-testid="dashboard-title">
           {selectedBusiness.displayNameLine1} {selectedBusiness.displayNameLine2}
         </h1>
-        <p className="text-muted-foreground mt-1">
+        <p className="text-muted-foreground mt-1" data-testid="welcome-message">
           ようこそ、{session?.user?.name}さん
         </p>
       </div>
@@ -224,7 +224,7 @@ export default function DashboardPage() {
               items={manuals.map((m) => m.id)}
               strategy={rectSortingStrategy}
             >
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3" data-testid="manual-list">
                 {manuals.map((manual) => (
                   <DraggableManualCard
                     key={manual.id}

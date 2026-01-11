@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import { useSession } from 'next-auth/react'
 import { MessageSquare, Plus, Send, Trash2, Globe, Lock, X, Pencil, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -40,7 +40,7 @@ interface BlockMemoProps {
   memoCount?: number
 }
 
-export function BlockMemo({ blockId, memoCount: initialMemoCount = 0 }: BlockMemoProps) {
+export const BlockMemo = memo(function BlockMemo({ blockId, memoCount: initialMemoCount = 0 }: BlockMemoProps) {
   const { data: session } = useSession()
   const [memos, setMemos] = useState<Memo[]>([])
   const [displayCount, setDisplayCount] = useState(initialMemoCount)
@@ -69,13 +69,7 @@ export function BlockMemo({ blockId, memoCount: initialMemoCount = 0 }: BlockMem
     fetchMemoCount()
   }, [blockId])
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchMemos()
-    }
-  }, [isOpen, blockId])
-
-  const fetchMemos = async () => {
+  const fetchMemos = useCallback(async () => {
     setIsLoading(true)
     try {
       const response = await fetch(`/api/blocks/${blockId}/memos`)
@@ -88,9 +82,15 @@ export function BlockMemo({ blockId, memoCount: initialMemoCount = 0 }: BlockMem
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [blockId])
 
-  const handleAddMemo = async () => {
+  useEffect(() => {
+    if (isOpen) {
+      fetchMemos()
+    }
+  }, [isOpen, fetchMemos])
+
+  const handleAddMemo = useCallback(async () => {
     if (!newMemoContent.trim()) return
 
     try {
@@ -114,9 +114,9 @@ export function BlockMemo({ blockId, memoCount: initialMemoCount = 0 }: BlockMem
     } catch {
       toast.error('メモの追加に失敗しました')
     }
-  }
+  }, [blockId, newMemoContent, newMemoVisibility, memos])
 
-  const handleDeleteMemo = async (memoId: string) => {
+  const handleDeleteMemo = useCallback(async (memoId: string) => {
     if (!confirm('このメモを削除しますか？')) return
 
     try {
@@ -126,27 +126,27 @@ export function BlockMemo({ blockId, memoCount: initialMemoCount = 0 }: BlockMem
 
       if (!response.ok) throw new Error('Failed to delete')
 
-      setMemos(memos.filter((m) => m.id !== memoId))
+      setMemos((prev) => prev.filter((m) => m.id !== memoId))
       setDisplayCount((prev) => Math.max(0, prev - 1))
       toast.success('メモを削除しました')
     } catch {
       toast.error('メモの削除に失敗しました')
     }
-  }
+  }, [])
 
-  const startEditing = (memo: Memo) => {
+  const startEditing = useCallback((memo: Memo) => {
     setEditingMemoId(memo.id)
     setEditContent(memo.content)
     setEditVisibility(memo.visibility)
-  }
+  }, [])
 
-  const cancelEditing = () => {
+  const cancelEditing = useCallback(() => {
     setEditingMemoId(null)
     setEditContent('')
     setEditVisibility('PRIVATE')
-  }
+  }, [])
 
-  const handleEditMemo = async () => {
+  const handleEditMemo = useCallback(async () => {
     if (!editingMemoId || !editContent.trim()) return
 
     try {
@@ -162,14 +162,14 @@ export function BlockMemo({ blockId, memoCount: initialMemoCount = 0 }: BlockMem
       if (!response.ok) throw new Error('Failed to update')
 
       const updatedMemo = await response.json()
-      setMemos(memos.map((m) => (m.id === editingMemoId ? updatedMemo : m)))
+      setMemos((prev) => prev.map((m) => (m.id === editingMemoId ? updatedMemo : m)))
       setEditingMemoId(null)
       setEditContent('')
       toast.success('メモを更新しました')
     } catch {
       toast.error('メモの更新に失敗しました')
     }
-  }
+  }, [editingMemoId, editContent, editVisibility])
 
   const currentMemoCount = displayCount
 
@@ -407,4 +407,4 @@ export function BlockMemo({ blockId, memoCount: initialMemoCount = 0 }: BlockMem
       </SheetContent>
     </Sheet>
   )
-}
+})

@@ -1,5 +1,3 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
-
 // R2Bucket型の定義（Cloudflare Workers環境用）
 export interface R2BucketBinding {
   put(key: string, value: ArrayBuffer | string, options?: { httpMetadata?: { contentType?: string } }): Promise<unknown>
@@ -7,55 +5,12 @@ export interface R2BucketBinding {
   delete(key: string): Promise<void>
 }
 
-// Cloudflare R2 クライアント
-export const r2Client = new S3Client({
-  region: process.env.R2_REGION || 'auto',
-  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-  },
-})
+// R2の公開ドメイン（wrangler.jsoncで設定）
+const R2_PUBLIC_DOMAIN = 'pub-372d9b9361ec437c8c65f250c96b9e42.r2.dev'
 
-export const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || ''
-
-// 公開URLを生成（R2のPublic Access URLまたはカスタムドメイン）
+// 公開URLを生成（R2のPublic Access URL）
 export function getPublicUrl(key: string): string {
-  // R2のPublic Access URLを使用（要設定）
-  // カスタムドメインがある場合は環境変数で設定
-  const publicDomain = process.env.R2_PUBLIC_DOMAIN
-  if (publicDomain) {
-    return `https://${publicDomain}/${key}`
-  }
-  // R2.devのサブドメイン（要有効化）
-  return `https://pub-${process.env.R2_ACCOUNT_ID}.r2.dev/${key}`
-}
-
-// ファイルをR2にアップロード
-export async function uploadToR2(
-  file: Buffer,
-  key: string,
-  contentType: string
-): Promise<string> {
-  const command = new PutObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: key,
-    Body: file,
-    ContentType: contentType,
-  })
-
-  await r2Client.send(command)
-  return getPublicUrl(key)
-}
-
-// ファイルをR2から削除
-export async function deleteFromR2(key: string): Promise<void> {
-  const command = new DeleteObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: key,
-  })
-
-  await r2Client.send(command)
+  return `https://${R2_PUBLIC_DOMAIN}/${key}`
 }
 
 // ファイル名からキーを生成
@@ -82,8 +37,6 @@ export const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 // ========================================
 // Cloudflare Workers R2 Binding 対応
 // ========================================
-
-// R2Bucket型は src/types/cloudflare.d.ts でグローバルに定義
 
 /**
  * Base64データURLをR2にアップロード（Workers環境用）

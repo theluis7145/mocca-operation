@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import { FileText, Save, Camera, X, Image as ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -13,6 +13,7 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useDebouncedCallback } from 'use-debounce'
+import { optimizeImage } from '@/lib/image-optimizer'
 
 interface NotePhoto {
   id: string
@@ -29,7 +30,7 @@ interface WorkSessionNoteProps {
   isSessionActive: boolean
 }
 
-export function WorkSessionNote({
+export const WorkSessionNote = memo(function WorkSessionNote({
   workSessionId,
   blockId,
   initialContent = '',
@@ -65,6 +66,7 @@ export function WorkSessionNote({
       const response = await fetch(`/api/work-sessions/${workSessionId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           blockId,
           content: newContent,
@@ -87,54 +89,77 @@ export function WorkSessionNote({
     }
   }, [workSessionId, blockId, savedContent, noteId])
 
-  const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoCapture = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file) return
+    console.log('[WorkSessionNote] handlePhotoCapture called', { file: file?.name, size: file?.size, workSessionId, noteId })
 
-    // 最大5MBまで
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('写真は5MB以下にしてください')
+    if (!file) {
+      console.log('[WorkSessionNote] Early return - no file')
       return
     }
 
     setIsUploadingPhoto(true)
     try {
+      // 画像を最適化（失敗した場合は元のファイルを使用）
+      let fileToUpload = file
+      try {
+        const { file: optimizedFile, wasOptimized } = await optimizeImage(file)
+        if (wasOptimized) {
+          toast.info('画像を最適化しました')
+          fileToUpload = optimizedFile
+        }
+        console.log('[WorkSessionNote] Optimization result:', { wasOptimized, originalSize: file.size, optimizedSize: optimizedFile.size })
+      } catch (optimizeError) {
+        console.warn('[WorkSessionNote] Optimization failed, using original file:', optimizeError)
+      }
+
       // まずメモを保存してnoteIdを取得
       let currentNoteId = noteId
       if (!currentNoteId) {
+        console.log('[WorkSessionNote] Creating new note...')
         currentNoteId = await saveNote(content || ' ') // 空の場合はスペースを入れる
         if (!currentNoteId) {
           throw new Error('Failed to create note')
         }
+        console.log('[WorkSessionNote] Note created:', currentNoteId)
       }
 
       // 画像をBase64に変換
+      console.log('[WorkSessionNote] Converting to Base64...')
       const reader = new FileReader()
       const imageData = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string)
-        reader.onerror = reject
-        reader.readAsDataURL(file)
+        reader.onload = () => {
+          console.log('[WorkSessionNote] Base64 conversion complete, length:', (reader.result as string)?.length)
+          resolve(reader.result as string)
+        }
+        reader.onerror = () => reject(new Error('画像の読み込みに失敗しました'))
+        reader.readAsDataURL(fileToUpload)
       })
 
       // 写真をアップロード
-      const response = await fetch(
-        `/api/work-sessions/${workSessionId}/notes/${currentNoteId}/photos`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageData }),
-        }
-      )
+      const url = `/api/work-sessions/${workSessionId}/notes/${currentNoteId}/photos`
+      console.log('[WorkSessionNote] Sending POST request to', url)
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ imageData }),
+      })
 
+      console.log('[WorkSessionNote] Response status:', response.status)
       if (!response.ok) {
-        throw new Error('Failed to upload photo')
+        const errorData = await response.json().catch(() => ({}))
+        console.error('[WorkSessionNote] Error response:', errorData)
+        throw new Error(errorData.error || '写真のアップロードに失敗しました')
       }
 
       const newPhoto = await response.json()
+      console.log('[WorkSessionNote] Photo saved successfully:', newPhoto.id)
       setPhotos((prev) => [...prev, newPhoto])
       toast.success('写真を追加しました')
-    } catch {
-      toast.error('写真のアップロードに失敗しました')
+    } catch (error) {
+      console.error('[WorkSessionNote] Photo upload error:', error)
+      toast.error(error instanceof Error ? error.message : '写真のアップロードに失敗しました')
     } finally {
       setIsUploadingPhoto(false)
       // ファイル入力をリセット
@@ -142,9 +167,9 @@ export function WorkSessionNote({
         fileInputRef.current.value = ''
       }
     }
-  }
+  }, [noteId, content, saveNote, workSessionId])
 
-  const handleDeletePhoto = async (photoId: string) => {
+  const handleDeletePhoto = useCallback(async (photoId: string) => {
     if (!noteId) return
 
     try {
@@ -152,6 +177,7 @@ export function WorkSessionNote({
         `/api/work-sessions/${workSessionId}/notes/${noteId}/photos?photoId=${photoId}`,
         {
           method: 'DELETE',
+          credentials: 'include',
         }
       )
 
@@ -164,22 +190,22 @@ export function WorkSessionNote({
     } catch {
       toast.error('写真の削除に失敗しました')
     }
-  }
+  }, [noteId, workSessionId])
 
   const debouncedSave = useDebouncedCallback(saveNote, 1000)
 
-  const handleContentChange = (newContent: string) => {
+  const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent)
     if (isSessionActive) {
       debouncedSave(newContent)
     }
-  }
+  }, [isSessionActive, debouncedSave])
 
-  const handleManualSave = async () => {
+  const handleManualSave = useCallback(async () => {
     debouncedSave.cancel()
     await saveNote(content)
     toast.success('保存しました')
-  }
+  }, [debouncedSave, saveNote, content])
 
   const hasUnsavedChanges = content !== savedContent
 
@@ -349,4 +375,4 @@ export function WorkSessionNote({
       </Dialog>
     </div>
   )
-}
+})

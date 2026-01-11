@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures'
-import { waitForPageLoad, expectToast } from './fixtures'
+import { waitForPageLoad } from './fixtures'
 
 test.describe('作業セッションフロー', () => {
   test.describe('作業セッション開始から完了まで', () => {

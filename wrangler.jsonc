@@ -3,7 +3,7 @@
   "name": "mocca-operation",
   "main": ".open-next/worker.js",
   "compatibility_date": "2024-09-23",
-  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "compatibility_flags": ["nodejs_compat_v2"],
 
   // workers.devサブドメインを有効化
   "workers_dev": true,
@@ -50,6 +50,6 @@
   // 環境変数
   "vars": {
     "NEXTJS_ENV": "production",
-    "R2_PUBLIC_DOMAIN": "YOUR_R2_PUBLIC_DOMAIN"
+    "R2_PUBLIC_DOMAIN": "pub-372d9b9361ec437c8c65f250c96b9e42.r2.dev"
   }
 }

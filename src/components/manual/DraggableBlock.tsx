@@ -25,6 +25,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { optimizeImage, formatFileSize } from '@/lib/image-optimizer'
 import type { Block } from '@prisma/client'
 import type { TextBlockContent, CheckItem } from '@/types'
 
@@ -142,7 +143,7 @@ export function DraggableBlock({
     onEdit()
   }
 
-  // 画像アップロードハンドラ
+  // 画像アップロードハンドラ（自動最適化対応）
   const handleImageUpload = async (file: File) => {
     if (!businessId || !manualId) {
       console.error('businessId or manualId is missing')
@@ -151,8 +152,17 @@ export function DraggableBlock({
 
     setIsUploading(true)
     try {
+      // 画像を最適化（10MB超の場合は自動でリサイズ・圧縮）
+      const optimizeResult = await optimizeImage(file)
+
+      if (optimizeResult.wasOptimized) {
+        console.log(
+          `画像を最適化しました: ${formatFileSize(optimizeResult.originalSize)} → ${formatFileSize(optimizeResult.optimizedSize)}`
+        )
+      }
+
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', optimizeResult.file)
       formData.append('businessId', businessId)
       formData.append('manualId', manualId)
 
@@ -520,8 +530,10 @@ export function DraggableBlock({
                   if (file && businessId && manualId) {
                     setIsUploading(true)
                     try {
+                      // 画像を最適化
+                      const optimizeResult = await optimizeImage(file)
                       const formData = new FormData()
-                      formData.append('file', file)
+                      formData.append('file', optimizeResult.file)
                       formData.append('businessId', businessId)
                       formData.append('manualId', manualId)
                       const response = await fetch('/api/upload', {
@@ -550,8 +562,10 @@ export function DraggableBlock({
                     if (file && businessId && manualId) {
                       setIsUploading(true)
                       try {
+                        // 画像を最適化
+                        const optimizeResult = await optimizeImage(file)
                         const formData = new FormData()
-                        formData.append('file', file)
+                        formData.append('file', optimizeResult.file)
                         formData.append('businessId', businessId)
                         formData.append('manualId', manualId)
                         const response = await fetch('/api/upload', {
@@ -829,16 +843,10 @@ function SortableCheckItem({ id, item, onTextChange, onImageChange, onVideoChang
     transition,
   }
 
-  // 画像アップロードハンドラ
+  // 画像アップロードハンドラ（自動最適化対応）
   const handleItemImageUpload = async (file: File) => {
     if (!businessId || !manualId) {
       alert('事業IDまたはマニュアルIDが指定されていません')
-      return
-    }
-
-    // ファイルサイズチェック（10MB）
-    if (file.size > 10 * 1024 * 1024) {
-      alert('ファイルサイズが10MBを超えています')
       return
     }
 
@@ -851,8 +859,17 @@ function SortableCheckItem({ id, item, onTextChange, onImageChange, onVideoChang
 
     setIsItemUploading(true)
     try {
+      // 画像を最適化（10MB超の場合は自動でリサイズ・圧縮）
+      const optimizeResult = await optimizeImage(file)
+
+      if (optimizeResult.wasOptimized) {
+        console.log(
+          `画像を最適化しました: ${formatFileSize(optimizeResult.originalSize)} → ${formatFileSize(optimizeResult.optimizedSize)}`
+        )
+      }
+
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', optimizeResult.file)
       formData.append('businessId', businessId)
       formData.append('manualId', manualId)
 
