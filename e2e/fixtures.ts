@@ -14,7 +14,7 @@ export const TEST_USER = {
  * ログイン済み状態のページを提供するフィクスチャ
  */
 export const test = base.extend<{ authenticatedPage: Page }>({
-  authenticatedPage: async ({ page }, use) => {
+  authenticatedPage: async ({ page }, applyFixture) => {
     // ログインページに移動
     await page.goto('/login')
 
@@ -27,7 +27,7 @@ export const test = base.extend<{ authenticatedPage: Page }>({
     await expect(page).toHaveURL('/', { timeout: 10000 })
 
     // ログイン済みのページを使用
-    await use(page)
+    await applyFixture(page)
   },
 })
 
