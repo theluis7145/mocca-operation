@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Plus, Building2, Edit, Trash2, X } from 'lucide-react'
@@ -36,18 +36,7 @@ export default function AdminBusinessesPage() {
   const [description, setDescription] = useState('')
   const [themeColors, setThemeColors] = useState<string[]>(['#000000'])
 
-  useEffect(() => {
-    if (status === 'loading') return
-
-    if (!session?.user?.isSuperAdmin) {
-      router.push('/')
-      return
-    }
-
-    fetchBusinesses()
-  }, [session, status, router])
-
-  const fetchBusinesses = async () => {
+  const fetchBusinesses = useCallback(async () => {
     try {
       const response = await fetch('/api/businesses')
       if (!response.ok) throw new Error('Failed to fetch')
@@ -60,7 +49,18 @@ export default function AdminBusinessesPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [setGlobalBusinesses])
+
+  useEffect(() => {
+    if (status === 'loading') return
+
+    if (!session?.user?.isSuperAdmin) {
+      router.push('/')
+      return
+    }
+
+    fetchBusinesses()
+  }, [session, status, router, fetchBusinesses])
 
   const resetForm = () => {
     setDisplayNameLine1('')

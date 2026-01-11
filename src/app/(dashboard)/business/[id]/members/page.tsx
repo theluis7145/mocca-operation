@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { ArrowLeft, User, Shield, UserPlus, Trash2, Building2 } from 'lucide-react'
@@ -60,11 +60,7 @@ export default function MembersPage() {
 
   const isSuperAdmin = session?.user?.isSuperAdmin
 
-  useEffect(() => {
-    fetchData()
-  }, [businessId])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       // 事業情報を取得
       const businessRes = await fetch(`/api/businesses/${businessId}`)
@@ -79,7 +75,7 @@ export default function MembersPage() {
       setMembers(membersData)
 
       // スーパー管理者のみ：追加可能なユーザー一覧を取得
-      if (session?.user?.isSuperAdmin) {
+      if (isSuperAdmin) {
         const usersRes = await fetch('/api/users')
         if (usersRes.ok) {
           const usersData = await usersRes.json()
@@ -96,7 +92,11 @@ export default function MembersPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [businessId, isSuperAdmin])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   const handleAddMember = async () => {
     if (!selectedUserId) {
