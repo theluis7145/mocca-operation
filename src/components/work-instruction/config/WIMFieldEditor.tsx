@@ -38,12 +38,15 @@ interface FieldOptions {
 
 export function WIMFieldEditor({
   businessId,
+  // configId is passed for future use (e.g., multi-config support)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   configId: _configId,
   field,
   onSave,
   onCancel,
 }: WIMFieldEditorProps) {
-  const [fieldKey, setFieldKey] = useState(field?.fieldKey || '')
+  // fieldKey is read-only after initial creation
+  const fieldKey = field?.fieldKey || ''
   const [fieldType, setFieldType] = useState<FieldType>(field?.fieldType || 'text')
   const [label, setLabel] = useState(field?.label || '')
   const [options, setOptions] = useState<FieldOptions>(field?.options || {})

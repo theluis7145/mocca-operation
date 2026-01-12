@@ -90,6 +90,7 @@ model Manual {
   businessId  String       @map("business_id")
   title       String
   description String?
+  genre       String?      // ジャンル（カテゴリ）
   status      ManualStatus @default(DRAFT)
   adminOnly   Boolean      @default(false) @map("admin_only") // 管理者のみに公開
   sortOrder   Int          @default(0) @map("sort_order") // 表示順序
@@ -110,6 +111,7 @@ model Manual {
 
   @@index([businessId, sortOrder])
   @@index([businessId, isArchived])
+  @@index([businessId, genre])
   @@map("manuals")
 }
 
