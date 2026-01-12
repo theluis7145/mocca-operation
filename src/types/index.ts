@@ -47,6 +47,7 @@ export type ManualWithBlocks = Manual & {
   business: Business
   creator: Pick<User, 'id' | 'name'>
   updater: Pick<User, 'id' | 'name'>
+  genre?: string | null
 }
 
 export type BlockWithMemos = Block & {

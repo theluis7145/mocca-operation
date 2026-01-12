@@ -38,6 +38,7 @@ export async function GET(
       id: m.id,
       title: m.title,
       description: m.description,
+      genre: m.genre,
       status: m.status,
       adminOnly: Boolean(m.admin_only),
       archivedAt: m.archived_at,

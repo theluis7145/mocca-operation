@@ -10,7 +10,9 @@ import { cn } from '@/lib/utils'
 import type { Manual } from '@prisma/client'
 
 // マニュアルの表示に必要な最小限のフィールド
-type ManualSummary = Pick<Manual, 'id' | 'title' | 'status' | 'description' | 'updatedAt' | 'adminOnly'>
+type ManualSummary = Pick<Manual, 'id' | 'title' | 'status' | 'description' | 'updatedAt' | 'adminOnly'> & {
+  genre?: string | null
+}
 
 interface DraggableManualCardProps {
   manual: ManualSummary
@@ -104,6 +106,11 @@ export function DraggableManualCard({
       <CardContent className="pt-0">
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-2 flex-wrap">
+            {manual.genre && (
+              <Badge variant="secondary" className="text-xs">
+                {manual.genre}
+              </Badge>
+            )}
             {manual.status === 'DRAFT' && (
               <Badge variant="outline" className="text-xs">
                 非公開

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { FileText, Image, Video, AlertTriangle, CheckCircle, Upload, Loader2, Camera } from 'lucide-react'
+import { FileText, Image, Video, AlertTriangle, CheckCircle, Upload, Loader2, Camera, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -113,7 +113,10 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
   const [videoUrl, setVideoUrl] = useState('')
   const [title, setTitle] = useState('')
   const [warningLevel, setWarningLevel] = useState<'info' | 'warning' | 'danger'>('warning')
-  const [checkItems, setCheckItems] = useState<string[]>([''])
+  const [checkItems, setCheckItems] = useState<{ text: string; imageUrl: string; videoUrl: string; showImage: boolean; showVideo: boolean }[]>([{ text: '', imageUrl: '', videoUrl: '', showImage: false, showVideo: false }])
+  const [uploadingCheckItemIndex, setUploadingCheckItemIndex] = useState<number | null>(null)
+  const [draggingCheckItemIndex, setDraggingCheckItemIndex] = useState<number | null>(null)
+  const checkItemFileInputRefs = useRef<(HTMLInputElement | null)[]>([])
   const [photoDescription, setPhotoDescription] = useState('')
   const [isRequired, setIsRequired] = useState(false)
   const [referenceImageUrl, setReferenceImageUrl] = useState('')
@@ -152,7 +155,20 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
         onSave({ type: 'warning', level: warningLevel, title, text })
         break
       case 'CHECKPOINT': {
-        const items = checkItems.filter((item) => item.trim())
+        const items = checkItems
+          .filter((item) => item.text.trim())
+          .map((item) => {
+            // 画像または動画URLがある場合はオブジェクト形式で保存
+            if (item.imageUrl || item.videoUrl) {
+              return {
+                text: item.text,
+                imageUrl: item.imageUrl || undefined,
+                videoUrl: item.videoUrl || undefined,
+              }
+            }
+            // テキストのみの場合は文字列として保存（後方互換性）
+            return item.text
+          })
         if (items.length === 0) return
         onSave({ type: 'checkpoint', title, items })
         break
@@ -452,7 +468,76 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
         </div>
       )
 
-    case 'CHECKPOINT':
+    case 'CHECKPOINT': {
+      const handleCheckItemImageUpload = async (index: number, file: File) => {
+        if (!businessId || !manualId) {
+          toast.error('事業IDまたはマニュアルIDが指定されていません')
+          return
+        }
+
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        if (!allowedTypes.includes(file.type)) {
+          toast.error('JPEG、PNG、GIF、WebP形式のみ対応しています')
+          return
+        }
+
+        setUploadingCheckItemIndex(index)
+        try {
+          const optimizeResult = await optimizeImage(file)
+          if (optimizeResult.wasOptimized) {
+            toast.info(`画像を最適化しました: ${formatFileSize(optimizeResult.originalSize)} → ${formatFileSize(optimizeResult.optimizedSize)}`)
+          }
+
+          const formData = new FormData()
+          formData.append('file', optimizeResult.file)
+          formData.append('businessId', businessId)
+          formData.append('manualId', manualId)
+
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          })
+
+          if (!response.ok) {
+            const data = await response.json()
+            throw new Error(data.error || 'アップロードに失敗しました')
+          }
+
+          const data = await response.json()
+          const newItems = [...checkItems]
+          newItems[index] = { ...newItems[index], imageUrl: data.url }
+          setCheckItems(newItems)
+          toast.success('画像をアップロードしました')
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'アップロードに失敗しました')
+        } finally {
+          setUploadingCheckItemIndex(null)
+        }
+      }
+
+      const handleCheckItemDragOver = (e: React.DragEvent, index: number) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setDraggingCheckItemIndex(index)
+      }
+
+      const handleCheckItemDragLeave = (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setDraggingCheckItemIndex(null)
+      }
+
+      const handleCheckItemDrop = async (e: React.DragEvent, index: number) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setDraggingCheckItemIndex(null)
+
+        const file = e.dataTransfer.files[0]
+        if (file) {
+          await handleCheckItemImageUpload(index, file)
+        }
+      }
+
       return (
         <div className="space-y-4">
           <div>
@@ -465,35 +550,197 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
           </div>
           <div>
             <Label>チェック項目</Label>
-            <div className="space-y-2 mt-1">
+            <div className="space-y-2 mt-2">
               {checkItems.map((item, index) => (
-                <div key={index} className="flex gap-2">
-                  <Input
-                    value={item}
-                    onChange={(e) => {
-                      const newItems = [...checkItems]
-                      newItems[index] = e.target.value
-                      setCheckItems(newItems)
-                    }}
-                    placeholder={`項目 ${index + 1}`}
-                  />
-                  {checkItems.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        setCheckItems(checkItems.filter((_, i) => i !== index))
+                <div key={index} className="rounded-md border p-2 space-y-2">
+                  {/* メイン行: テキスト入力 + カメラボタン + ビデオボタン + 削除ボタン */}
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      value={item.text}
+                      onChange={(e) => {
+                        const newItems = [...checkItems]
+                        newItems[index] = { ...newItems[index], text: e.target.value }
+                        setCheckItems(newItems)
                       }}
-                    >
-                      ×
-                    </Button>
+                      placeholder={`項目 ${index + 1}`}
+                      className="flex-1 min-w-0"
+                    />
+                    <div className="flex gap-1 flex-shrink-0">
+                      <Button
+                        type="button"
+                        variant={item.imageUrl ? 'default' : 'outline'}
+                        size="icon"
+                        className="h-9 w-9"
+                        onClick={() => {
+                          const newItems = [...checkItems]
+                          newItems[index] = { ...newItems[index], showImage: !newItems[index].showImage }
+                          setCheckItems(newItems)
+                        }}
+                        title="画像を追加"
+                      >
+                        <Camera className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={item.videoUrl ? 'default' : 'outline'}
+                        size="icon"
+                        className="h-9 w-9"
+                        onClick={() => {
+                          const newItems = [...checkItems]
+                          newItems[index] = { ...newItems[index], showVideo: !newItems[index].showVideo }
+                          setCheckItems(newItems)
+                        }}
+                        title="動画を追加"
+                      >
+                        <Video className="h-4 w-4" />
+                      </Button>
+                      {checkItems.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={() => {
+                            setCheckItems(checkItems.filter((_, i) => i !== index))
+                          }}
+                        >
+                          ×
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 画像入力・アップロード */}
+                  {(item.showImage || item.imageUrl) && (
+                    <div className="ml-8 space-y-2">
+                      <input
+                        type="file"
+                        ref={(el) => { checkItemFileInputRefs.current[index] = el }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleCheckItemImageUpload(index, file)
+                          e.target.value = ''
+                        }}
+                        accept="image/jpeg,image/png,image/gif,image/webp"
+                        className="hidden"
+                      />
+                      {/* ドラッグ&ドロップエリア（画像がない場合のみ表示） */}
+                      {!item.imageUrl && (
+                        <div
+                          className={cn(
+                            'border-2 border-dashed rounded-lg p-3 text-center transition-colors',
+                            draggingCheckItemIndex === index
+                              ? 'border-primary bg-primary/5'
+                              : 'border-muted-foreground/25 hover:border-muted-foreground/50',
+                            uploadingCheckItemIndex === index && 'opacity-50 pointer-events-none'
+                          )}
+                          onDragOver={(e) => handleCheckItemDragOver(e, index)}
+                          onDragLeave={handleCheckItemDragLeave}
+                          onDrop={(e) => handleCheckItemDrop(e, index)}
+                          onClick={() => checkItemFileInputRefs.current[index]?.click()}
+                        >
+                          {uploadingCheckItemIndex === index ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">アップロード中...</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center gap-1 cursor-pointer">
+                              <Upload className="h-5 w-5 text-muted-foreground" />
+                              <p className="text-xs text-muted-foreground">
+                                ドラッグ&ドロップまたはクリック
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* URL入力（代替手段） */}
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          value={item.imageUrl}
+                          onChange={(e) => {
+                            const newItems = [...checkItems]
+                            newItems[index] = { ...newItems[index], imageUrl: e.target.value }
+                            setCheckItems(newItems)
+                          }}
+                          placeholder="または画像URL (https://...)"
+                          className="flex-1 text-sm"
+                          disabled={uploadingCheckItemIndex === index}
+                        />
+                        {item.imageUrl && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              const newItems = [...checkItems]
+                              newItems[index] = { ...newItems[index], imageUrl: '', showImage: false }
+                              setCheckItems(newItems)
+                            }}
+                            title="画像を削除"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                      {/* プレビュー */}
+                      {item.imageUrl && (
+                        <div className="border rounded p-2">
+                          <img
+                            src={item.imageUrl}
+                            alt={`項目${index + 1}の画像`}
+                            className="max-h-24 rounded"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 動画URL入力 */}
+                  {(item.showVideo || item.videoUrl) && (
+                    <div className="ml-8 space-y-2">
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          value={item.videoUrl}
+                          onChange={(e) => {
+                            const newItems = [...checkItems]
+                            newItems[index] = { ...newItems[index], videoUrl: e.target.value }
+                            setCheckItems(newItems)
+                          }}
+                          placeholder="YouTube URL (https://www.youtube.com/watch?v=...)"
+                          className="flex-1 text-sm"
+                        />
+                        {item.videoUrl && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              const newItems = [...checkItems]
+                              newItems[index] = { ...newItems[index], videoUrl: '', showVideo: false }
+                              setCheckItems(newItems)
+                            }}
+                            title="動画を削除"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                      {item.videoUrl && (
+                        <div className="text-xs text-muted-foreground">
+                          <Video className="h-3 w-3 inline mr-1" />
+                          YouTube動画が添付されています
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setCheckItems([...checkItems, ''])}
+                onClick={() => setCheckItems([...checkItems, { text: '', imageUrl: '', videoUrl: '', showImage: false, showVideo: false }])}
               >
                 + 項目を追加
               </Button>
@@ -505,13 +752,14 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!checkItems.some((item) => item.trim())}
+              disabled={!checkItems.some((item) => item.text.trim()) || uploadingCheckItemIndex !== null}
             >
               追加
             </Button>
           </div>
         </div>
       )
+    }
 
     case 'PHOTO_RECORD': {
       const handleReferenceImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

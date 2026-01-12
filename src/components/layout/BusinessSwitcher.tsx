@@ -113,7 +113,7 @@ export function BusinessSwitcher({ hasThemeColor = false }: BusinessSwitcherProp
         <div
           className={cn(
             'absolute top-full left-0 mt-1 z-50',
-            'min-w-[200px] bg-popover text-popover-foreground border rounded-lg shadow-lg',
+            'min-w-[180px] max-w-[calc(100vw-32px)] bg-popover text-popover-foreground border rounded-lg shadow-lg',
             'animate-in fade-in-0 zoom-in-95'
           )}
           role="listbox"

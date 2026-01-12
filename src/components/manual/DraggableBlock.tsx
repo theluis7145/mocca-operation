@@ -243,7 +243,20 @@ export function DraggableBlock({
         newContent = {
           type: 'checkpoint',
           title: editTitle,
-          items: editCheckItems.filter(item => item.text.trim())
+          items: editCheckItems
+            .filter(item => item.text.trim())
+            .map(item => {
+              // 画像または動画URLがある場合はオブジェクト形式で保存
+              if (item.imageUrl || item.videoUrl) {
+                return {
+                  text: item.text,
+                  imageUrl: item.imageUrl || undefined,
+                  videoUrl: item.videoUrl || undefined,
+                }
+              }
+              // テキストのみの場合は文字列として保存（後方互換性）
+              return item.text
+            })
         }
         break
       case 'PHOTO_RECORD':

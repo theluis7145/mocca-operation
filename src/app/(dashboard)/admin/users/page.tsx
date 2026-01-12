@@ -444,14 +444,26 @@ export default function AdminUsersPage() {
                   )}
 
                   {businessAccess.map((access, index) => (
-                    <div key={index} className="flex gap-2 items-center">
+                    <div key={index} className="p-3 border rounded-lg space-y-2 bg-muted/30">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">アクセス権 {index + 1}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => handleRemoveBusinessAccess(index)}
+                        >
+                          ×
+                        </Button>
+                      </div>
                       <Select
                         value={access.businessId}
                         onValueChange={(value) =>
                           handleUpdateBusinessAccess(index, 'businessId', value)
                         }
                       >
-                        <SelectTrigger className="flex-1">
+                        <SelectTrigger className="w-full">
                           <SelectValue placeholder="事業を選択" />
                         </SelectTrigger>
                         <SelectContent>
@@ -468,7 +480,7 @@ export default function AdminUsersPage() {
                           handleUpdateBusinessAccess(index, 'role', value)
                         }
                       >
-                        <SelectTrigger className="w-32">
+                        <SelectTrigger className="w-full">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -476,14 +488,6 @@ export default function AdminUsersPage() {
                           <SelectItem value="WORKER">作業者</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveBusinessAccess(index)}
-                      >
-                        ×
-                      </Button>
                     </div>
                   ))}
                 </div>

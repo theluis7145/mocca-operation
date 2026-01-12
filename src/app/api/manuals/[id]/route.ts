@@ -34,6 +34,7 @@ function toManualResponse(manual: D1ManualWithRelations, blocks?: D1Block[]) {
     businessId: manual.business_id,
     title: manual.title,
     description: manual.description,
+    genre: manual.genre,
     status: manual.status,
     adminOnly: Boolean(manual.admin_only),
     sortOrder: manual.sort_order,
@@ -157,11 +158,12 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { title, description, adminOnly } = body
+    const { title, description, genre, adminOnly } = body
 
     await updateManual(id, {
       ...(title !== undefined && { title }),
       ...(description !== undefined && { description }),
+      ...(genre !== undefined && { genre }),
       ...(adminOnly !== undefined && { admin_only: adminOnly }),
       updated_by: session.user.id,
     })

@@ -2,7 +2,9 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Business, Manual } from '@prisma/client'
 
-type ManualSummary = Pick<Manual, 'id' | 'title' | 'status' | 'description' | 'updatedAt' | 'adminOnly'>
+type ManualSummary = Pick<Manual, 'id' | 'title' | 'status' | 'description' | 'updatedAt' | 'adminOnly'> & {
+  genre?: string | null
+}
 
 // themeColorsはDBではstringだが、APIでパースされてstring[]として返される
 export type BusinessWithManuals = Omit<Business, 'themeColors'> & {

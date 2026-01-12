@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { ArrowLeft, Save } from 'lucide-react'
@@ -18,20 +18,34 @@ import {
 import { toast } from 'sonner'
 import type { Business } from '@prisma/client'
 
+type BusinessWithManuals = Business & {
+  manuals?: { genre?: string | null }[]
+}
+
 export default function NewManualPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { data: session, status } = useSession()
 
-  const [businesses, setBusinesses] = useState<Business[]>([])
+  const [businesses, setBusinesses] = useState<BusinessWithManuals[]>([])
   const [selectedBusinessId, setSelectedBusinessId] = useState<string>('')
+  const [selectedBusinessManuals, setSelectedBusinessManuals] = useState<{ genre?: string | null }[]>([])
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [genre, setGenre] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
   // URLパラメータから初期値を設定
   const initialBusinessId = searchParams.get('businessId')
+
+  // 選択された事業の既存ジャンル一覧
+  const existingGenres = useMemo(() => {
+    const genres = selectedBusinessManuals
+      .map((m) => m.genre)
+      .filter((g): g is string => Boolean(g))
+    return [...new Set(genres)].sort()
+  }, [selectedBusinessManuals])
 
   useEffect(() => {
     if (status === 'loading') return
@@ -65,6 +79,29 @@ export default function NewManualPage() {
     fetchBusinesses()
   }, [session, status, router, initialBusinessId])
 
+  // 事業選択が変更されたらマニュアル一覧を取得
+  useEffect(() => {
+    if (!selectedBusinessId) {
+      setSelectedBusinessManuals([])
+      return
+    }
+
+    async function fetchBusinessManuals() {
+      try {
+        const response = await fetch(`/api/businesses/${selectedBusinessId}`)
+        if (response.ok) {
+          const data = await response.json()
+          setSelectedBusinessManuals(data.manuals || [])
+        }
+      } catch {
+        // エラー時は空のリストを設定
+        setSelectedBusinessManuals([])
+      }
+    }
+
+    fetchBusinessManuals()
+  }, [selectedBusinessId])
+
   const handleSubmit = async () => {
     if (!title.trim()) {
       toast.error('タイトルを入力してください')
@@ -85,6 +122,7 @@ export default function NewManualPage() {
           businessId: selectedBusinessId,
           title,
           description,
+          genre: genre || null,
         }),
       })
 
@@ -159,6 +197,29 @@ export default function NewManualPage() {
                 placeholder="マニュアルのタイトル"
                 className="text-lg font-medium bg-background"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">ジャンル（任意）</Label>
+              <Input
+                value={genre}
+                onChange={(e) => setGenre(e.target.value)}
+                placeholder="例：清掃、調理、接客など"
+                className="bg-background"
+                list="genre-suggestions"
+              />
+              {existingGenres.length > 0 && (
+                <datalist id="genre-suggestions">
+                  {existingGenres.map((g) => (
+                    <option key={g} value={g} />
+                  ))}
+                </datalist>
+              )}
+              {existingGenres.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  既存のジャンル: {existingGenres.join('、')}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

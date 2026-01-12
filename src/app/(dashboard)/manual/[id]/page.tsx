@@ -209,8 +209,13 @@ export default function ManualViewPage() {
           </div>
           <div className="flex flex-wrap items-center gap-3 mb-2">
             <h1 className="text-2xl md:text-3xl font-bold">{manual.title}</h1>
-            {manual.status === 'DRAFT' && (
+            {manual.genre && (
               <Badge variant="secondary">
+                {manual.genre}
+              </Badge>
+            )}
+            {manual.status === 'DRAFT' && (
+              <Badge variant="outline">
                 非公開
               </Badge>
             )}

@@ -53,7 +53,7 @@ export function MobileSidebar({ manuals = [], activeWorkSessions = [] }: MobileS
 
   return (
     <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-      <SheetContent side="left" className="w-80 p-0">
+      <SheetContent side="left" className="w-[85vw] max-w-80 p-0">
         <SheetHeader className="border-b px-4 py-3">
           <SheetTitle className="text-left leading-tight">
             <div className="text-sm font-medium">{selectedBusiness?.displayNameLine1 || 'メニュー'}</div>

@@ -58,6 +58,7 @@ export interface D1Manual {
   business_id: string
   title: string
   description: string | null
+  genre: string | null  // ジャンル（カテゴリ）
   status: D1ManualStatus
   admin_only: number // SQLite boolean
   sort_order: number
@@ -240,6 +241,7 @@ export interface CreateManualInput {
   business_id: string
   title: string
   description?: string | null
+  genre?: string | null
   status?: D1ManualStatus
   admin_only?: boolean
   sort_order?: number
@@ -250,6 +252,7 @@ export interface CreateManualInput {
 export interface UpdateManualInput {
   title?: string
   description?: string | null
+  genre?: string | null
   status?: D1ManualStatus
   admin_only?: boolean
   sort_order?: number

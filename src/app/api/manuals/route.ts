@@ -15,6 +15,7 @@ function toManualResponse(manual: D1ManualWithRelations) {
     businessId: manual.business_id,
     title: manual.title,
     description: manual.description,
+    genre: manual.genre,
     status: manual.status,
     adminOnly: Boolean(manual.admin_only),
     sortOrder: manual.sort_order,
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { businessId, title, description } = body
+    const { businessId, title, description, genre } = body
 
     if (!businessId || !title) {
       return NextResponse.json(
@@ -85,6 +86,7 @@ export async function POST(request: NextRequest) {
       business_id: businessId,
       title,
       description,
+      genre,
       created_by: session.user.id,
       updated_by: session.user.id,
     })

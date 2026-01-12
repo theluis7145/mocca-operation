@@ -560,14 +560,15 @@ export async function createManual(input: CreateManualInput): Promise<D1Manual> 
 
   await db
     .prepare(`
-      INSERT INTO manuals (id, business_id, title, description, status, admin_only, sort_order, is_archived, version, created_by, updated_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?)
+      INSERT INTO manuals (id, business_id, title, description, genre, status, admin_only, sort_order, is_archived, version, created_by, updated_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?)
     `)
     .bind(
       id,
       input.business_id,
       input.title,
       input.description || null,
+      input.genre || null,
       input.status || 'DRAFT',
       input.admin_only ? 1 : 0,
       input.sort_order ?? 0,
@@ -591,6 +592,7 @@ export async function updateManual(id: string, input: UpdateManualInput): Promis
 
   if (input.title !== undefined) { updates.push('title = ?'); values.push(input.title) }
   if (input.description !== undefined) { updates.push('description = ?'); values.push(input.description) }
+  if (input.genre !== undefined) { updates.push('genre = ?'); values.push(input.genre) }
   if (input.status !== undefined) { updates.push('status = ?'); values.push(input.status) }
   if (input.admin_only !== undefined) { updates.push('admin_only = ?'); values.push(input.admin_only ? 1 : 0) }
   if (input.sort_order !== undefined) { updates.push('sort_order = ?'); values.push(input.sort_order) }
@@ -704,7 +706,7 @@ export async function findBlockWithManual(id: string): Promise<(D1Block & { manu
   const result = await db
     .prepare(`
       SELECT b.*, m.id as m_id, m.business_id, m.title as m_title, m.description as m_description,
-             m.status as m_status, m.admin_only as m_admin_only, m.sort_order as m_sort_order,
+             m.genre as m_genre, m.status as m_status, m.admin_only as m_admin_only, m.sort_order as m_sort_order,
              m.is_archived as m_is_archived, m.archived_at as m_archived_at, m.version as m_version,
              m.created_by as m_created_by, m.updated_by as m_updated_by, m.created_at as m_created_at, m.updated_at as m_updated_at
       FROM blocks b
@@ -714,7 +716,7 @@ export async function findBlockWithManual(id: string): Promise<(D1Block & { manu
     .bind(id)
     .first<D1Block & {
       m_id: string; business_id: string; m_title: string; m_description: string | null;
-      m_status: D1Manual['status']; m_admin_only: number; m_sort_order: number;
+      m_genre: string | null; m_status: D1Manual['status']; m_admin_only: number; m_sort_order: number;
       m_is_archived: number; m_archived_at: string | null; m_version: number;
       m_created_by: string; m_updated_by: string; m_created_at: string; m_updated_at: string
     }>()
@@ -734,6 +736,7 @@ export async function findBlockWithManual(id: string): Promise<(D1Block & { manu
       business_id: result.business_id,
       title: result.m_title,
       description: result.m_description,
+      genre: result.m_genre,
       status: result.m_status,
       admin_only: result.m_admin_only,
       sort_order: result.m_sort_order,
@@ -1126,6 +1129,7 @@ export async function findWorkSessionWithRelations(id: string): Promise<D1WorkSe
       business_id: session.business_id,
       title: session.m_title,
       description: null,
+      genre: null,
       status: 'PUBLISHED' as const,
       admin_only: 0,
       sort_order: 0,
@@ -1847,12 +1851,12 @@ export async function findActiveWorkInstructionMemos(): Promise<D1WorkInstructio
   const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
   const timestamp = now()
 
-  // 期限切れメモを自動アーカイブ（stay_end_date < today）
+  // 期限切れメモを自動アーカイブ（stay_end_dateが設定されている場合のみ）
   await db
     .prepare(`
       UPDATE work_instruction_memos
       SET is_archived = 1, archived_at = ?
-      WHERE is_archived = 0 AND stay_end_date < ?
+      WHERE is_archived = 0 AND stay_end_date != '' AND stay_end_date < ?
     `)
     .bind(timestamp, today)
     .run()
@@ -2026,12 +2030,12 @@ export async function findActiveWorkInstructionMemosByBusiness(businessId: strin
   const today = new Date().toISOString().split('T')[0]
   const timestamp = now()
 
-  // 期限切れメモを自動アーカイブ
+  // 期限切れメモを自動アーカイブ（stay_end_dateが設定されている場合のみ）
   await db
     .prepare(`
       UPDATE work_instruction_memos
       SET is_archived = 1, archived_at = ?
-      WHERE is_archived = 0 AND stay_end_date < ? AND business_id = ?
+      WHERE is_archived = 0 AND stay_end_date != '' AND stay_end_date < ? AND business_id = ?
     `)
     .bind(timestamp, today, businessId)
     .run()

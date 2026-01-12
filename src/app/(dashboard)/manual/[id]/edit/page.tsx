@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   DndContext,
@@ -42,6 +42,7 @@ type ManualWithBlocks = Manual & {
   blocks: Block[]
   business: { id: string; displayNameLine1: string; displayNameLine2: string }
   adminOnly: boolean
+  genre: string | null
 }
 
 export default function ManualEditPage() {
@@ -53,6 +54,8 @@ export default function ManualEditPage() {
   const [blocks, setBlocks] = useState<Block[]>([])
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [genre, setGenre] = useState('')
+  const [businessManuals, setBusinessManuals] = useState<{ genre?: string | null }[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
   const [isAddingBlock, setIsAddingBlock] = useState(false)
@@ -78,6 +81,7 @@ export default function ManualEditPage() {
         setBlocks(data.blocks || [])
         setTitle(data.title)
         setDescription(data.description || '')
+        setGenre(data.genre || '')
 
         // マニュアルが属する事業を選択
         if (data.business?.id) {
@@ -103,6 +107,33 @@ export default function ManualEditPage() {
       clearNavigation()
     }
   }, [params.id, router, setCurrentManual, clearNavigation, selectBusinessById])
+
+  // 事業のマニュアル一覧を取得（ジャンル候補用）
+  useEffect(() => {
+    if (!manual?.business?.id) return
+
+    async function fetchBusinessManuals() {
+      try {
+        const response = await fetch(`/api/businesses/${manual?.business?.id}`)
+        if (response.ok) {
+          const data = await response.json()
+          setBusinessManuals(data.manuals || [])
+        }
+      } catch {
+        setBusinessManuals([])
+      }
+    }
+
+    fetchBusinessManuals()
+  }, [manual?.business?.id])
+
+  // 既存ジャンル一覧
+  const existingGenres = useMemo(() => {
+    const genres = businessManuals
+      .map((m) => m.genre)
+      .filter((g): g is string => Boolean(g))
+    return [...new Set(genres)].sort()
+  }, [businessManuals])
 
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
@@ -135,7 +166,7 @@ export default function ManualEditPage() {
 
   const handleSaveTitleAndDescription = useCallback(async () => {
     if (!manual) return
-    const hasChanges = title !== manual.title || description !== (manual.description || '')
+    const hasChanges = title !== manual.title || description !== (manual.description || '') || genre !== (manual.genre || '')
     if (!hasChanges) {
       toast.info('変更がありません')
       return
@@ -144,15 +175,15 @@ export default function ManualEditPage() {
       const response = await fetch(`/api/manuals/${params.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description }),
+        body: JSON.stringify({ title, description, genre: genre || null }),
       })
       if (!response.ok) throw new Error('Failed to save')
-      setManual(prev => prev ? { ...prev, title, description } : null)
+      setManual(prev => prev ? { ...prev, title, description, genre: genre || null } : null)
       toast.success('保存しました')
     } catch {
       toast.error('保存に失敗しました')
     }
-  }, [manual, params.id, title, description])
+  }, [manual, params.id, title, description, genre])
 
   const handleDuplicate = async () => {
     if (!manual) return
@@ -338,6 +369,7 @@ export default function ManualEditPage() {
         setBlocks(data.blocks || [])
         setTitle(data.title)
         setDescription(data.description || '')
+        setGenre(data.genre || '')
       }
     } catch {
       // エラー時はページをリロード
@@ -531,6 +563,28 @@ export default function ManualEditPage() {
                 placeholder="マニュアルタイトル"
                 className="text-lg font-medium bg-background"
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">ジャンル（任意）</label>
+              <Input
+                value={genre}
+                onChange={(e) => setGenre(e.target.value)}
+                placeholder="例：清掃、調理、接客など"
+                className="bg-background"
+                list="genre-suggestions-edit"
+              />
+              {existingGenres.length > 0 && (
+                <datalist id="genre-suggestions-edit">
+                  {existingGenres.map((g) => (
+                    <option key={g} value={g} />
+                  ))}
+                </datalist>
+              )}
+              {existingGenres.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  既存のジャンル: {existingGenres.join('、')}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">説明（任意）</label>
