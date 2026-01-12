@@ -51,7 +51,7 @@ export async function PATCH(
     const { content, type } = body
 
     const block = await updateBlock(id, {
-      ...(content !== undefined && { content }),
+      ...(content !== undefined && { content: JSON.stringify(content) }),
       ...(type !== undefined && { type }),
     })
 
