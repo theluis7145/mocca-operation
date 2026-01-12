@@ -196,11 +196,12 @@ export default function BusinessPage() {
               <div className="flex items-center gap-2 flex-shrink-0">
                 <Button
                   variant="outline"
-                  size="icon"
+                  size="sm"
+                  className="gap-1"
                   onClick={() => router.push(`/business/${business.id}/archived`)}
-                  title="アーカイブ"
                 >
                   <Archive className="h-4 w-4" />
+                  <span>アーカイブ</span>
                 </Button>
                 <Button
                   size="sm"
