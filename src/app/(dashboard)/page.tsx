@@ -20,7 +20,7 @@ import {
   sortableKeyboardCoordinates,
   rectSortingStrategy,
 } from '@dnd-kit/sortable'
-import { Building2, FileText, ChevronRight } from 'lucide-react'
+import { Building2, FileText, ChevronRight, Plus } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
@@ -208,11 +208,22 @@ export default function DashboardPage() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">マニュアル一覧</h2>
-          {isAdmin && manuals.length > 1 && (
-            <p className="text-sm text-muted-foreground">
-              ドラッグ&ドロップで並び替え
-            </p>
-          )}
+          <div className="flex items-center gap-3">
+            {isAdmin && manuals.length > 1 && (
+              <p className="text-sm text-muted-foreground hidden sm:block">
+                ドラッグ&ドロップで並び替え
+              </p>
+            )}
+            {isAdmin && (
+              <Link href={`/manual/new?businessId=${selectedBusiness.id}`}>
+                <Button size="sm" className="gap-1">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">新規マニュアル</span>
+                  <span className="sm:hidden">新規</span>
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
         {manuals.length > 0 ? (
           <DndContext
@@ -239,9 +250,17 @@ export default function DashboardPage() {
         ) : (
           <Card className="p-8 text-center">
             <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground mb-4">
               マニュアルがまだ登録されていません
             </p>
+            {isAdmin && (
+              <Link href={`/manual/new?businessId=${selectedBusiness.id}`}>
+                <Button className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  マニュアルを作成
+                </Button>
+              </Link>
+            )}
           </Card>
         )}
       </div>

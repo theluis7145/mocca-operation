@@ -116,6 +116,9 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
   const [checkItems, setCheckItems] = useState<string[]>([''])
   const [photoDescription, setPhotoDescription] = useState('')
   const [isRequired, setIsRequired] = useState(false)
+  const [referenceImageUrl, setReferenceImageUrl] = useState('')
+  const [isUploadingReference, setIsUploadingReference] = useState(false)
+  const referenceImageInputRef = useRef<HTMLInputElement>(null)
 
   const extractYouTubeId = (url: string): string | null => {
     const patterns = [
@@ -156,7 +159,13 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
       }
       case 'PHOTO_RECORD':
         if (!title.trim()) return
-        onSave({ type: 'photo_record', title, description: photoDescription, required: isRequired })
+        onSave({
+          type: 'photo_record',
+          title,
+          description: photoDescription,
+          required: isRequired,
+          referenceImageUrl: referenceImageUrl || undefined,
+        })
         break
     }
   }
@@ -504,7 +513,49 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
         </div>
       )
 
-    case 'PHOTO_RECORD':
+    case 'PHOTO_RECORD': {
+      const handleReferenceImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file || !businessId || !manualId) return
+
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        if (!allowedTypes.includes(file.type)) {
+          toast.error('JPEG、PNG、GIF、WebP形式のみ対応しています')
+          return
+        }
+
+        setIsUploadingReference(true)
+        try {
+          const optimizeResult = await optimizeImage(file)
+          if (optimizeResult.wasOptimized) {
+            toast.info(`画像を最適化しました: ${formatFileSize(optimizeResult.originalSize)} → ${formatFileSize(optimizeResult.optimizedSize)}`)
+          }
+
+          const formData = new FormData()
+          formData.append('file', optimizeResult.file)
+          formData.append('businessId', businessId)
+          formData.append('manualId', manualId)
+
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          })
+
+          if (!response.ok) {
+            const data = await response.json()
+            throw new Error(data.error || 'アップロードに失敗しました')
+          }
+
+          const data = await response.json()
+          setReferenceImageUrl(data.url)
+          toast.success('参考画像をアップロードしました')
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'アップロードに失敗しました')
+        } finally {
+          setIsUploadingReference(false)
+        }
+      }
+
       return (
         <div className="space-y-4">
           <div className="p-3 bg-purple-50 dark:bg-purple-950 rounded-lg border border-purple-200 dark:border-purple-800">
@@ -534,6 +585,57 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
               rows={2}
             />
           </div>
+          <div>
+            <Label>参考画像（任意）</Label>
+            <p className="text-xs text-muted-foreground mb-2">
+              撮影時の参考になる画像を追加できます
+            </p>
+            <input
+              type="file"
+              ref={referenceImageInputRef}
+              onChange={handleReferenceImageUpload}
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              className="hidden"
+            />
+            {referenceImageUrl ? (
+              <div className="border rounded-lg p-2 space-y-2">
+                <img
+                  src={referenceImageUrl}
+                  alt="参考画像"
+                  className="max-w-full max-h-32 rounded"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setReferenceImageUrl('')}
+                >
+                  削除
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => referenceImageInputRef.current?.click()}
+                disabled={isUploadingReference || !businessId || !manualId}
+                className="gap-2"
+              >
+                {isUploadingReference ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    アップロード中...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    参考画像を追加
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -547,15 +649,16 @@ function BlockContentEditor({ type, onSave, onCancel, businessId, manualId }: Bl
             </Label>
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={onCancel}>
+            <Button variant="ghost" onClick={onCancel} disabled={isUploadingReference}>
               キャンセル
             </Button>
-            <Button onClick={handleSave} disabled={!title.trim()}>
+            <Button onClick={handleSave} disabled={!title.trim() || isUploadingReference}>
               追加
             </Button>
           </div>
         </div>
       )
+    }
 
     default:
       return null

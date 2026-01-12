@@ -69,22 +69,48 @@ export async function GET(request: NextRequest) {
     // ブロックを検索（テキストコンテンツ）
     const allBlocks = await searchBlocks(accessibleBusinessIds, effectiveStatusFilter, 100)
 
-    // テキスト内容でフィルタリング
+    // テキスト内容でフィルタリング（全ブロックタイプを検索対象に）
     const queryLower = query.toLowerCase()
     const filteredBlocks = allBlocks.filter((block) => {
       try {
         const content = JSON.parse(block.content) as Record<string, unknown>
-        if (block.type === 'TEXT' || block.type === 'WARNING') {
-          const text = (content.text as string) || ''
-          return text.toLowerCase().includes(queryLower)
-        } else if (block.type === 'CHECKPOINT') {
-          const title = (content.title as string) || ''
-          return title.toLowerCase().includes(queryLower)
+        switch (block.type) {
+          case 'TEXT':
+          case 'WARNING': {
+            const text = (content.text as string) || ''
+            return text.toLowerCase().includes(queryLower)
+          }
+          case 'CHECKPOINT': {
+            const title = (content.title as string) || ''
+            const items = (content.items as Array<string | { text: string }>) || []
+            const itemTexts = items.map((item) =>
+              typeof item === 'string' ? item : item.text || ''
+            ).join(' ')
+            return title.toLowerCase().includes(queryLower) ||
+                   itemTexts.toLowerCase().includes(queryLower)
+          }
+          case 'IMAGE': {
+            const alt = (content.alt as string) || ''
+            const caption = (content.caption as string) || ''
+            return alt.toLowerCase().includes(queryLower) ||
+                   caption.toLowerCase().includes(queryLower)
+          }
+          case 'VIDEO': {
+            const title = (content.title as string) || ''
+            return title.toLowerCase().includes(queryLower)
+          }
+          case 'PHOTO_RECORD': {
+            const title = (content.title as string) || ''
+            const description = (content.description as string) || ''
+            return title.toLowerCase().includes(queryLower) ||
+                   description.toLowerCase().includes(queryLower)
+          }
+          default:
+            return false
         }
       } catch {
         return false
       }
-      return false
     }).slice(0, 10) // 最大10件
 
     // ブロックの検索結果を整形
@@ -97,18 +123,46 @@ export async function GET(request: NextRequest) {
       }
       let excerpt = ''
 
-      if (block.type === 'TEXT' || block.type === 'WARNING') {
-        const text = (content.text as string) || ''
-        const index = text.toLowerCase().indexOf(queryLower)
-        if (index >= 0) {
-          const start = Math.max(0, index - 30)
-          const end = Math.min(text.length, index + query.length + 30)
-          excerpt = (start > 0 ? '...' : '') + text.slice(start, end) + (end < text.length ? '...' : '')
-        } else {
-          excerpt = text.slice(0, 60) + (text.length > 60 ? '...' : '')
+      switch (block.type) {
+        case 'TEXT':
+        case 'WARNING': {
+          const text = (content.text as string) || ''
+          const index = text.toLowerCase().indexOf(queryLower)
+          if (index >= 0) {
+            const start = Math.max(0, index - 30)
+            const end = Math.min(text.length, index + query.length + 30)
+            excerpt = (start > 0 ? '...' : '') + text.slice(start, end) + (end < text.length ? '...' : '')
+          } else {
+            excerpt = text.slice(0, 60) + (text.length > 60 ? '...' : '')
+          }
+          break
         }
-      } else if (block.type === 'CHECKPOINT') {
-        excerpt = (content.title as string) || ''
+        case 'CHECKPOINT': {
+          const title = (content.title as string) || ''
+          const items = (content.items as Array<string | { text: string }>) || []
+          const itemTexts = items.map((item) =>
+            typeof item === 'string' ? item : item.text || ''
+          ).join(', ')
+          excerpt = title || itemTexts.slice(0, 60) + (itemTexts.length > 60 ? '...' : '')
+          break
+        }
+        case 'IMAGE': {
+          const alt = (content.alt as string) || ''
+          const caption = (content.caption as string) || ''
+          excerpt = `[画像] ${alt || caption || '(説明なし)'}`
+          break
+        }
+        case 'VIDEO': {
+          const title = (content.title as string) || ''
+          excerpt = `[動画] ${title || '(タイトルなし)'}`
+          break
+        }
+        case 'PHOTO_RECORD': {
+          const title = (content.title as string) || ''
+          const description = (content.description as string) || ''
+          excerpt = `[写真撮影] ${title}${description ? `: ${description}` : ''}`
+          break
+        }
       }
 
       return {
