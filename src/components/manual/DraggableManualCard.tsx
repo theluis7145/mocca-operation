@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, FileText, ChevronRight, Shield } from 'lucide-react'
@@ -22,6 +23,7 @@ export function DraggableManualCard({
   isAdmin,
   onClick,
 }: DraggableManualCardProps) {
+  const [isPressed, setIsPressed] = useState(false)
   const {
     attributes,
     listeners,
@@ -36,17 +38,32 @@ export function DraggableManualCard({
     transition,
   }
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // ドラッグハンドルのクリックは除外
+    if ((e.target as HTMLElement).closest('[data-drag-handle]')) {
+      return
+    }
+    onClick()
+  }
+
   return (
     <Card
       ref={setNodeRef}
       style={style}
       data-testid={`manual-card-${manual.id}`}
+      onClick={handleCardClick}
+      onMouseDown={() => setIsPressed(true)}
+      onMouseUp={() => setIsPressed(false)}
+      onMouseLeave={() => setIsPressed(false)}
+      onTouchStart={() => setIsPressed(true)}
+      onTouchEnd={() => setIsPressed(false)}
       className={cn(
-        'transition-all duration-200',
+        'transition-all duration-200 cursor-pointer',
         'border-l-4',
         manual.status === 'PUBLISHED' ? 'border-l-primary' : 'border-l-muted',
         isDragging && 'opacity-50 shadow-lg z-50',
-        !isDragging && 'hover:shadow-lg hover:-translate-y-1'
+        !isDragging && 'hover:shadow-lg hover:-translate-y-1',
+        isPressed && !isDragging && 'scale-[0.98] shadow-inner bg-muted/50'
       )}
     >
       <CardHeader className="pb-3">
@@ -56,6 +73,7 @@ export function DraggableManualCard({
             <div
               {...attributes}
               {...listeners}
+              data-drag-handle
               className="flex-shrink-0 p-1.5 -ml-1 cursor-grab active:cursor-grabbing touch-none rounded hover:bg-muted transition-colors"
               onClick={(e) => e.stopPropagation()}
             >
@@ -63,11 +81,8 @@ export function DraggableManualCard({
             </div>
           )}
 
-          {/* カード本体（クリック可能） */}
-          <div
-            className="flex items-start gap-3 min-w-0 flex-1 cursor-pointer"
-            onClick={onClick}
-          >
+          {/* カード本体 */}
+          <div className="flex items-start gap-3 min-w-0 flex-1">
             <div className={cn(
               'p-2 rounded-lg flex-shrink-0',
               manual.status === 'PUBLISHED' ? 'bg-primary/10' : 'bg-muted'
@@ -86,7 +101,7 @@ export function DraggableManualCard({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="pt-0 cursor-pointer" onClick={onClick}>
+      <CardContent className="pt-0">
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-2 flex-wrap">
             {manual.status === 'DRAFT' && (
@@ -97,7 +112,7 @@ export function DraggableManualCard({
             {manual.adminOnly && (
               <Badge variant="outline" className="text-xs gap-1">
                 <Shield className="h-3 w-3" />
-                管理者限定
+                管理者にのみ公開
               </Badge>
             )}
             <span className="text-xs">

@@ -17,7 +17,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { ArrowLeft, Eye, EyeOff, Plus, FileText, Copy, MoreHorizontal, Check, Save, History, Shield, Users, Archive } from 'lucide-react'
+import { ArrowLeft, EyeOff, Plus, FileText, Copy, MoreHorizontal, Check, Save, History, Shield, Users, Archive } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -133,37 +133,26 @@ export default function ManualEditPage() {
     [blocks, params.id]
   )
 
-  const handleSaveTitle = useCallback(async (newTitle: string) => {
-    if (!manual || newTitle === manual.title) return
+  const handleSaveTitleAndDescription = useCallback(async () => {
+    if (!manual) return
+    const hasChanges = title !== manual.title || description !== (manual.description || '')
+    if (!hasChanges) {
+      toast.info('変更がありません')
+      return
+    }
     try {
       const response = await fetch(`/api/manuals/${params.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle }),
+        body: JSON.stringify({ title, description }),
       })
       if (!response.ok) throw new Error('Failed to save')
-      setManual(prev => prev ? { ...prev, title: newTitle } : null)
-      toast.success('タイトルを保存しました')
+      setManual(prev => prev ? { ...prev, title, description } : null)
+      toast.success('保存しました')
     } catch {
-      toast.error('タイトルの保存に失敗しました')
+      toast.error('保存に失敗しました')
     }
-  }, [manual, params.id])
-
-  const handleSaveDescription = useCallback(async (newDescription: string) => {
-    if (!manual || newDescription === (manual.description || '')) return
-    try {
-      const response = await fetch(`/api/manuals/${params.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: newDescription }),
-      })
-      if (!response.ok) throw new Error('Failed to save')
-      setManual(prev => prev ? { ...prev, description: newDescription } : null)
-      toast.success('説明を保存しました')
-    } catch {
-      toast.error('説明の保存に失敗しました')
-    }
-  }, [manual, params.id])
+  }, [manual, params.id, title, description])
 
   const handleDuplicate = async () => {
     if (!manual) return
@@ -247,7 +236,7 @@ export default function ManualEditPage() {
 
       const updated = await response.json()
       setManual(updated)
-      toast.success(newAdminOnly ? '管理者限定に設定しました' : '全員に公開に設定しました')
+      toast.success(newAdminOnly ? '管理者にのみ公開に設定しました' : '全員に公開に設定しました')
     } catch {
       toast.error('公開対象の更新に失敗しました')
     }
@@ -387,22 +376,13 @@ export default function ManualEditPage() {
             {manual.adminOnly && (
               <Badge variant="outline" className="shrink-0 gap-1">
                 <Shield className="h-3 w-3" />
-                管理者限定
+                管理者にのみ公開
               </Badge>
             )}
           </div>
           <div className="flex items-center gap-2">
             {/* デスクトップ表示 */}
             <div className="hidden md:flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.push(`/manual/${manual.id}`)}
-                className="gap-2"
-              >
-                <Eye className="h-4 w-4" />
-                プレビュー
-              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -440,7 +420,7 @@ export default function ManualEditPage() {
                 ) : (
                   <>
                     <Shield className="h-4 w-4" />
-                    管理者限定
+                    管理者にのみ公開
                   </>
                 )}
               </Button>
@@ -471,10 +451,6 @@ export default function ManualEditPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => router.push(`/manual/${manual.id}`)}>
-                  <Eye className="h-4 w-4 mr-2" />
-                  プレビュー
-                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={handleSaveVersion}
                   disabled={isSavingVersion}
@@ -509,7 +485,7 @@ export default function ManualEditPage() {
                   ) : (
                     <>
                       <Shield className="h-4 w-4 mr-2" />
-                      管理者限定
+                      管理者にのみ公開
                     </>
                   )}
                 </DropdownMenuItem>
@@ -549,43 +525,31 @@ export default function ManualEditPage() {
           <div className="space-y-4 p-4 md:p-6 bg-muted/30 rounded-lg border">
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">タイトル</label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="マニュアルタイトル"
-                  className="text-lg font-medium flex-1 bg-background"
-                />
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => handleSaveTitle(title)}
-                  className="shrink-0 w-full sm:w-auto"
-                >
-                  保存
-                </Button>
-              </div>
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="マニュアルタイトル"
+                className="text-lg font-medium bg-background"
+              />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">説明（任意）</label>
-              <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-start">
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="このマニュアルの概要..."
-                  rows={2}
-                  className="flex-1 bg-background resize-none"
-                />
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => handleSaveDescription(description)}
-                  className="shrink-0 w-full sm:w-auto"
-                >
-                  保存
-                </Button>
-              </div>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="このマニュアルの概要..."
+                rows={2}
+                className="bg-background resize-none"
+              />
             </div>
+            <Button
+              variant="default"
+              onClick={handleSaveTitleAndDescription}
+              className="w-full sm:w-auto"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              保存
+            </Button>
           </div>
 
           {/* ブロック一覧 */}

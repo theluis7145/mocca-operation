@@ -103,10 +103,10 @@ export async function GET(
       )
     }
 
-    // 管理者限定マニュアルは管理者のみ閲覧可能
+    // 管理者にのみ公開のマニュアルは管理者のみ閲覧可能
     if (manual.admin_only && !canEditManual(level)) {
       return NextResponse.json(
-        { error: 'このマニュアルは管理者限定です' },
+        { error: 'このマニュアルは管理者にのみ公開されています' },
         { status: 403 }
       )
     }

@@ -217,7 +217,7 @@ export default function ManualViewPage() {
             {canEdit && manual.adminOnly && (
               <Badge variant="outline" className="gap-1">
                 <Shield className="h-3 w-3" />
-                管理者限定
+                管理者にのみ公開
               </Badge>
             )}
           </div>
