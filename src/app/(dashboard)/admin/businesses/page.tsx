@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { Plus, Building2, Edit, Trash2, X } from 'lucide-react'
+import { Plus, Building2, Edit, Trash2, X, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -19,7 +19,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
+import { Separator } from '@/components/ui/separator'
 import { useBusinessStore, type BusinessWithManuals } from '@/stores/useBusinessStore'
+import { WIMConfigPanel } from '@/components/work-instruction/config/WIMConfigPanel'
 
 export default function AdminBusinessesPage() {
   const { data: session, status } = useSession()
@@ -29,6 +31,7 @@ export default function AdminBusinessesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingBusiness, setEditingBusiness] = useState<BusinessWithManuals | null>(null)
+  const [configBusiness, setConfigBusiness] = useState<BusinessWithManuals | null>(null)
 
   // フォーム状態
   const [displayNameLine1, setDisplayNameLine1] = useState('')
@@ -332,7 +335,7 @@ export default function AdminBusinessesPage() {
               )}
             </CardHeader>
             <CardContent>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <Button
                   variant="outline"
                   size="sm"
@@ -340,6 +343,14 @@ export default function AdminBusinessesPage() {
                 >
                   <Edit className="h-4 w-4 mr-1" />
                   編集
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfigBusiness(business)}
+                >
+                  <Settings className="h-4 w-4 mr-1" />
+                  設定
                 </Button>
                 <Button
                   variant="outline"
@@ -364,6 +375,24 @@ export default function AdminBusinessesPage() {
           </Card>
         )}
       </div>
+
+      {/* 作業指示メモ設定ダイアログ */}
+      <Dialog open={!!configBusiness} onOpenChange={(open) => !open && setConfigBusiness(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {configBusiness?.displayNameLine1} {configBusiness?.displayNameLine2} - 設定
+            </DialogTitle>
+            <DialogDescription>
+              作業指示メモの設定を行います
+            </DialogDescription>
+          </DialogHeader>
+          <Separator />
+          {configBusiness && (
+            <WIMConfigPanel businessId={configBusiness.id} />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

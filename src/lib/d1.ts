@@ -12,6 +12,9 @@ import type {
   D1WorkSessionNote,
   D1WorkSessionNotePhoto,
   D1PhotoRecord,
+  D1WorkInstructionMemo,
+  D1WIMConfig,
+  D1WIMField,
   D1BusinessAccessWithBusiness,
   D1BusinessAccessWithUser,
   D1ManualWithRelations,
@@ -31,6 +34,10 @@ import type {
   CreateWorkSessionNoteInput,
   CreatePhotoRecordInput,
   CreateManualVersionInput,
+  CreateWorkInstructionMemoInput,
+  UpdateWorkInstructionMemoInput,
+  CreateWIMFieldInput,
+  UpdateWIMFieldInput,
   D1Role,
 } from './d1-types'
 
@@ -1820,4 +1827,474 @@ export async function getManualsWithWorkSessions(businessIds: string[]): Promise
     .all<{ id: string; title: string }>()
 
   return result.results || []
+}
+
+// ========================================
+// Work Instruction Memo CRUD (作業指示メモ)
+// ========================================
+
+export async function findWorkInstructionMemoById(id: string): Promise<D1WorkInstructionMemo | null> {
+  const db = await getD1Database()
+  return db
+    .prepare('SELECT * FROM work_instruction_memos WHERE id = ?')
+    .bind(id)
+    .first<D1WorkInstructionMemo>()
+}
+
+// アクティブなメモ取得（自動アーカイブ処理含む）
+export async function findActiveWorkInstructionMemos(): Promise<D1WorkInstructionMemo[]> {
+  const db = await getD1Database()
+  const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+  const timestamp = now()
+
+  // 期限切れメモを自動アーカイブ（stay_end_date < today）
+  await db
+    .prepare(`
+      UPDATE work_instruction_memos
+      SET is_archived = 1, archived_at = ?
+      WHERE is_archived = 0 AND stay_end_date < ?
+    `)
+    .bind(timestamp, today)
+    .run()
+
+  // アクティブなメモを取得
+  const result = await db
+    .prepare(`
+      SELECT * FROM work_instruction_memos
+      WHERE is_archived = 0
+      ORDER BY stay_start_date ASC
+    `)
+    .all<D1WorkInstructionMemo>()
+
+  return result.results || []
+}
+
+// アーカイブ済みメモ取得
+export async function findArchivedWorkInstructionMemos(limit = 50): Promise<D1WorkInstructionMemo[]> {
+  const db = await getD1Database()
+  const result = await db
+    .prepare(`
+      SELECT * FROM work_instruction_memos
+      WHERE is_archived = 1
+      ORDER BY archived_at DESC
+      LIMIT ?
+    `)
+    .bind(limit)
+    .all<D1WorkInstructionMemo>()
+
+  return result.results || []
+}
+
+// メモ作成
+export async function createWorkInstructionMemo(input: CreateWorkInstructionMemoInput): Promise<D1WorkInstructionMemo> {
+  const db = await getD1Database()
+  const id = generateId()
+  const timestamp = now()
+
+  await db
+    .prepare(`
+      INSERT INTO work_instruction_memos
+        (id, business_id, customer_name, stay_start_date, stay_end_date, adult_count, child_count,
+         adult_futon_count, child_futon_count, meal_plan, meal_plan_detail, notes, field_values,
+         is_archived, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+    `)
+    .bind(
+      id,
+      input.business_id,
+      input.customer_name || '',
+      input.stay_start_date || '',
+      input.stay_end_date || '',
+      input.adult_count ?? 0,
+      input.child_count ?? 0,
+      input.adult_futon_count ?? 0,
+      input.child_futon_count ?? 0,
+      input.meal_plan || '2食付き',
+      input.meal_plan_detail || null,
+      input.notes || null,
+      input.field_values || null,
+      input.created_by,
+      timestamp,
+      timestamp
+    )
+    .run()
+
+  return (await findWorkInstructionMemoById(id))!
+}
+
+// メモ更新
+export async function updateWorkInstructionMemo(
+  id: string,
+  input: UpdateWorkInstructionMemoInput
+): Promise<D1WorkInstructionMemo | null> {
+  const db = await getD1Database()
+  const existing = await findWorkInstructionMemoById(id)
+  if (!existing) return null
+
+  const updates: string[] = []
+  const values: unknown[] = []
+
+  if (input.customer_name !== undefined) {
+    updates.push('customer_name = ?')
+    values.push(input.customer_name)
+  }
+  if (input.stay_start_date !== undefined) {
+    updates.push('stay_start_date = ?')
+    values.push(input.stay_start_date)
+  }
+  if (input.stay_end_date !== undefined) {
+    updates.push('stay_end_date = ?')
+    values.push(input.stay_end_date)
+  }
+  if (input.adult_count !== undefined) {
+    updates.push('adult_count = ?')
+    values.push(input.adult_count)
+  }
+  if (input.child_count !== undefined) {
+    updates.push('child_count = ?')
+    values.push(input.child_count)
+  }
+  if (input.adult_futon_count !== undefined) {
+    updates.push('adult_futon_count = ?')
+    values.push(input.adult_futon_count)
+  }
+  if (input.child_futon_count !== undefined) {
+    updates.push('child_futon_count = ?')
+    values.push(input.child_futon_count)
+  }
+  if (input.meal_plan !== undefined) {
+    updates.push('meal_plan = ?')
+    values.push(input.meal_plan)
+  }
+  if (input.meal_plan_detail !== undefined) {
+    updates.push('meal_plan_detail = ?')
+    values.push(input.meal_plan_detail)
+  }
+  if (input.notes !== undefined) {
+    updates.push('notes = ?')
+    values.push(input.notes)
+  }
+  if (input.field_values !== undefined) {
+    updates.push('field_values = ?')
+    values.push(input.field_values)
+  }
+
+  if (updates.length === 0) return existing
+
+  updates.push('updated_at = ?')
+  values.push(now())
+  values.push(id)
+
+  await db
+    .prepare(`UPDATE work_instruction_memos SET ${updates.join(', ')} WHERE id = ?`)
+    .bind(...values)
+    .run()
+
+  return findWorkInstructionMemoById(id)
+}
+
+// メモ削除
+export async function deleteWorkInstructionMemo(id: string): Promise<boolean> {
+  const db = await getD1Database()
+  const result = await db
+    .prepare('DELETE FROM work_instruction_memos WHERE id = ?')
+    .bind(id)
+    .run()
+  return (result.meta?.changes ?? 0) > 0
+}
+
+// アクティブなメモの件数取得
+export async function countActiveWorkInstructionMemos(): Promise<number> {
+  const db = await getD1Database()
+  const today = new Date().toISOString().split('T')[0]
+
+  // 期限切れでなく、アーカイブされていないメモの件数
+  const result = await db
+    .prepare(`
+      SELECT COUNT(*) as count FROM work_instruction_memos
+      WHERE is_archived = 0 AND stay_end_date >= ?
+    `)
+    .bind(today)
+    .first<{ count: number }>()
+
+  return result?.count ?? 0
+}
+
+// 事業別アクティブメモ取得（自動アーカイブ処理含む）
+export async function findActiveWorkInstructionMemosByBusiness(businessId: string): Promise<D1WorkInstructionMemo[]> {
+  const db = await getD1Database()
+  const today = new Date().toISOString().split('T')[0]
+  const timestamp = now()
+
+  // 期限切れメモを自動アーカイブ
+  await db
+    .prepare(`
+      UPDATE work_instruction_memos
+      SET is_archived = 1, archived_at = ?
+      WHERE is_archived = 0 AND stay_end_date < ? AND business_id = ?
+    `)
+    .bind(timestamp, today, businessId)
+    .run()
+
+  // アクティブなメモを取得
+  const result = await db
+    .prepare(`
+      SELECT * FROM work_instruction_memos
+      WHERE is_archived = 0 AND business_id = ?
+      ORDER BY stay_start_date ASC
+    `)
+    .bind(businessId)
+    .all<D1WorkInstructionMemo>()
+
+  return result.results || []
+}
+
+// 事業別アーカイブ済みメモ取得
+export async function findArchivedWorkInstructionMemosByBusiness(businessId: string, limit = 50): Promise<D1WorkInstructionMemo[]> {
+  const db = await getD1Database()
+  const result = await db
+    .prepare(`
+      SELECT * FROM work_instruction_memos
+      WHERE is_archived = 1 AND business_id = ?
+      ORDER BY archived_at DESC
+      LIMIT ?
+    `)
+    .bind(businessId, limit)
+    .all<D1WorkInstructionMemo>()
+
+  return result.results || []
+}
+
+// 事業別アクティブメモ件数取得
+export async function countActiveWorkInstructionMemosByBusiness(businessId: string): Promise<number> {
+  const db = await getD1Database()
+  const today = new Date().toISOString().split('T')[0]
+
+  const result = await db
+    .prepare(`
+      SELECT COUNT(*) as count FROM work_instruction_memos
+      WHERE is_archived = 0 AND stay_end_date >= ? AND business_id = ?
+    `)
+    .bind(today, businessId)
+    .first<{ count: number }>()
+
+  return result?.count ?? 0
+}
+
+// ========================================
+// Work Instruction Memo Config CRUD (作業指示メモ設定)
+// ========================================
+
+// デフォルトフィールド定義
+const DEFAULT_WIM_FIELDS = [
+  { field_key: 'customer_name', field_type: 'text', label: 'お客様のお名前', is_required: 1, sort_order: 0, options: null },
+  { field_key: 'stay_start_date', field_type: 'date', label: '宿泊開始日', is_required: 1, sort_order: 1, options: null },
+  { field_key: 'stay_end_date', field_type: 'date', label: '宿泊終了日', is_required: 1, sort_order: 2, options: null },
+  { field_key: 'adult_count', field_type: 'number', label: '大人人数', is_required: 0, sort_order: 3, options: JSON.stringify({ min: 0, max: 10, unit: '名' }) },
+  { field_key: 'child_count', field_type: 'number', label: '幼児人数', is_required: 0, sort_order: 4, options: JSON.stringify({ min: 0, max: 10, unit: '名' }) },
+  { field_key: 'adult_futon_count', field_type: 'number', label: '大人用布団', is_required: 0, sort_order: 5, options: JSON.stringify({ min: 0, max: 10, unit: '組' }) },
+  { field_key: 'child_futon_count', field_type: 'number', label: '幼児用布団', is_required: 0, sort_order: 6, options: JSON.stringify({ min: 0, max: 10, unit: '組' }) },
+  { field_key: 'meal_plan', field_type: 'select', label: '食事', is_required: 1, sort_order: 7, options: JSON.stringify({ options: [{ value: '2食付き', label: '2食付き' }, { value: 'アラカルト', label: 'アラカルト' }, { value: 'カスタム', label: 'カスタム' }] }) },
+  { field_key: 'meal_plan_detail', field_type: 'textarea', label: '食事詳細', is_required: 0, sort_order: 8, options: JSON.stringify({ rows: 2, placeholder: '食事に関する詳細情報を入力...' }) },
+  { field_key: 'notes', field_type: 'textarea', label: 'その他連絡事項', is_required: 0, sort_order: 9, options: JSON.stringify({ rows: 3, placeholder: '特記事項があれば入力...' }) },
+]
+
+// 事業のWIM設定を取得
+export async function findWIMConfigByBusiness(businessId: string): Promise<D1WIMConfig | null> {
+  const db = await getD1Database()
+  return db
+    .prepare('SELECT * FROM work_instruction_memo_configs WHERE business_id = ?')
+    .bind(businessId)
+    .first<D1WIMConfig>()
+}
+
+// WIM設定を作成（デフォルトフィールド付き）
+export async function createWIMConfig(businessId: string, isEnabled = true): Promise<D1WIMConfig> {
+  const db = await getD1Database()
+  const id = generateId()
+  const timestamp = now()
+
+  // 設定を作成
+  await db
+    .prepare(`
+      INSERT INTO work_instruction_memo_configs (id, business_id, is_enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `)
+    .bind(id, businessId, isEnabled ? 1 : 0, timestamp, timestamp)
+    .run()
+
+  // デフォルトフィールドを作成
+  for (const field of DEFAULT_WIM_FIELDS) {
+    const fieldId = generateId()
+    await db
+      .prepare(`
+        INSERT INTO work_instruction_memo_fields
+          (id, config_id, field_key, field_type, label, is_required, is_visible, sort_order, options, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+      `)
+      .bind(fieldId, id, field.field_key, field.field_type, field.label, field.is_required, field.sort_order, field.options, timestamp, timestamp)
+      .run()
+  }
+
+  const config = await findWIMConfigByBusiness(businessId)
+  if (!config) throw new Error('Failed to create WIM config')
+  return config
+}
+
+// WIM設定を取得または作成
+export async function getOrCreateWIMConfig(businessId: string): Promise<D1WIMConfig> {
+  const existing = await findWIMConfigByBusiness(businessId)
+  if (existing) return existing
+  return createWIMConfig(businessId)
+}
+
+// WIM設定の有効/無効を更新
+export async function updateWIMConfigEnabled(id: string, isEnabled: boolean): Promise<D1WIMConfig | null> {
+  const db = await getD1Database()
+  const timestamp = now()
+
+  await db
+    .prepare(`
+      UPDATE work_instruction_memo_configs
+      SET is_enabled = ?, updated_at = ?
+      WHERE id = ?
+    `)
+    .bind(isEnabled ? 1 : 0, timestamp, id)
+    .run()
+
+  return db
+    .prepare('SELECT * FROM work_instruction_memo_configs WHERE id = ?')
+    .bind(id)
+    .first<D1WIMConfig>()
+}
+
+// ========================================
+// Work Instruction Memo Field CRUD (作業指示メモフィールド)
+// ========================================
+
+// 設定のフィールド一覧を取得
+export async function findWIMFieldsByConfig(configId: string): Promise<D1WIMField[]> {
+  const db = await getD1Database()
+  const result = await db
+    .prepare(`
+      SELECT * FROM work_instruction_memo_fields
+      WHERE config_id = ?
+      ORDER BY sort_order ASC
+    `)
+    .bind(configId)
+    .all<D1WIMField>()
+
+  return result.results || []
+}
+
+// フィールドを取得
+export async function findWIMFieldById(id: string): Promise<D1WIMField | null> {
+  const db = await getD1Database()
+  return db
+    .prepare('SELECT * FROM work_instruction_memo_fields WHERE id = ?')
+    .bind(id)
+    .first<D1WIMField>()
+}
+
+// フィールドを作成
+export async function createWIMField(input: CreateWIMFieldInput): Promise<D1WIMField> {
+  const db = await getD1Database()
+  const id = generateId()
+  const timestamp = now()
+
+  await db
+    .prepare(`
+      INSERT INTO work_instruction_memo_fields
+        (id, config_id, field_key, field_type, label, is_required, is_visible, sort_order, options, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    .bind(
+      id,
+      input.config_id,
+      input.field_key,
+      input.field_type,
+      input.label,
+      input.is_required ? 1 : 0,
+      input.is_visible !== false ? 1 : 0,
+      input.sort_order ?? 0,
+      input.options ?? null,
+      timestamp,
+      timestamp
+    )
+    .run()
+
+  const field = await findWIMFieldById(id)
+  if (!field) throw new Error('Failed to create WIM field')
+  return field
+}
+
+// フィールドを更新
+export async function updateWIMField(id: string, input: UpdateWIMFieldInput): Promise<D1WIMField | null> {
+  const db = await getD1Database()
+  const timestamp = now()
+
+  const updates: string[] = ['updated_at = ?']
+  const values: (string | number | null)[] = [timestamp]
+
+  if (input.field_key !== undefined) { updates.push('field_key = ?'); values.push(input.field_key) }
+  if (input.field_type !== undefined) { updates.push('field_type = ?'); values.push(input.field_type) }
+  if (input.label !== undefined) { updates.push('label = ?'); values.push(input.label) }
+  if (input.is_required !== undefined) { updates.push('is_required = ?'); values.push(input.is_required ? 1 : 0) }
+  if (input.is_visible !== undefined) { updates.push('is_visible = ?'); values.push(input.is_visible ? 1 : 0) }
+  if (input.sort_order !== undefined) { updates.push('sort_order = ?'); values.push(input.sort_order) }
+  if (input.options !== undefined) { updates.push('options = ?'); values.push(input.options) }
+
+  values.push(id)
+
+  await db
+    .prepare(`UPDATE work_instruction_memo_fields SET ${updates.join(', ')} WHERE id = ?`)
+    .bind(...values)
+    .run()
+
+  return findWIMFieldById(id)
+}
+
+// フィールドを削除（非表示に設定）
+export async function deleteWIMField(id: string): Promise<boolean> {
+  const db = await getD1Database()
+  const timestamp = now()
+
+  const result = await db
+    .prepare(`
+      UPDATE work_instruction_memo_fields
+      SET is_visible = 0, updated_at = ?
+      WHERE id = ?
+    `)
+    .bind(timestamp, id)
+    .run()
+
+  return (result.meta?.changes ?? 0) > 0
+}
+
+// フィールドを完全削除
+export async function hardDeleteWIMField(id: string): Promise<boolean> {
+  const db = await getD1Database()
+  const result = await db
+    .prepare('DELETE FROM work_instruction_memo_fields WHERE id = ?')
+    .bind(id)
+    .run()
+
+  return (result.meta?.changes ?? 0) > 0
+}
+
+// フィールドの並び順を更新
+export async function reorderWIMFields(configId: string, fieldIds: string[]): Promise<void> {
+  const db = await getD1Database()
+  const timestamp = now()
+
+  for (let i = 0; i < fieldIds.length; i++) {
+    await db
+      .prepare(`
+        UPDATE work_instruction_memo_fields
+        SET sort_order = ?, updated_at = ?
+        WHERE id = ? AND config_id = ?
+      `)
+      .bind(i, timestamp, fieldIds[i], configId)
+      .run()
+  }
 }

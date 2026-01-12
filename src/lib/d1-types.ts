@@ -315,3 +315,148 @@ export interface CreateManualVersionInput {
   created_by: string
   comment?: string | null
 }
+
+// ========================================
+// 作業指示メモ (Work Instruction Memo)
+// ========================================
+
+export type D1MealPlan = '2食付き' | 'アラカルト' | 'カスタム'
+
+export interface D1WorkInstructionMemo {
+  id: string
+  business_id: string | null  // 事業ID（新規追加）
+  customer_name: string
+  stay_start_date: string // YYYY-MM-DD
+  stay_end_date: string   // YYYY-MM-DD
+  adult_count: number
+  child_count: number
+  adult_futon_count: number
+  child_futon_count: number
+  meal_plan: D1MealPlan
+  meal_plan_detail: string | null
+  notes: string | null
+  field_values: string | null  // 動的フィールド値（JSON）
+  is_archived: number // SQLite boolean
+  archived_at: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateWorkInstructionMemoInput {
+  business_id: string
+  customer_name?: string
+  stay_start_date?: string
+  stay_end_date?: string
+  adult_count?: number
+  child_count?: number
+  adult_futon_count?: number
+  child_futon_count?: number
+  meal_plan?: D1MealPlan
+  meal_plan_detail?: string | null
+  notes?: string | null
+  field_values?: string | null
+  created_by: string
+}
+
+export interface UpdateWorkInstructionMemoInput {
+  customer_name?: string
+  stay_start_date?: string
+  stay_end_date?: string
+  adult_count?: number
+  child_count?: number
+  adult_futon_count?: number
+  child_futon_count?: number
+  meal_plan?: D1MealPlan
+  meal_plan_detail?: string | null
+  notes?: string | null
+  field_values?: string | null
+}
+
+// ========================================
+// 作業指示メモ設定 (Work Instruction Memo Config)
+// ========================================
+
+export type WIMFieldType = 'text' | 'number' | 'date' | 'select' | 'textarea'
+
+// 設定テーブル型
+export interface D1WIMConfig {
+  id: string
+  business_id: string
+  is_enabled: number  // SQLite boolean
+  created_at: string
+  updated_at: string
+}
+
+// フィールド定義型
+export interface D1WIMField {
+  id: string
+  config_id: string
+  field_key: string
+  field_type: WIMFieldType
+  label: string
+  is_required: number  // SQLite boolean
+  is_visible: number   // SQLite boolean
+  sort_order: number
+  options: string | null  // JSON
+  created_at: string
+  updated_at: string
+}
+
+// フィールドオプション型
+export interface TextFieldOptions {
+  maxLength?: number
+  placeholder?: string
+}
+
+export interface NumberFieldOptions {
+  min: number
+  max: number
+  step?: number
+  unit?: string
+}
+
+export interface DateFieldOptions {
+  minDate?: string
+  maxDate?: string
+}
+
+export interface SelectFieldOptions {
+  options: Array<{ value: string; label: string }>
+  allowMultiple?: boolean
+}
+
+export interface TextareaFieldOptions {
+  maxLength?: number
+  rows?: number
+  placeholder?: string
+}
+
+export type WIMFieldOptions =
+  | TextFieldOptions
+  | NumberFieldOptions
+  | DateFieldOptions
+  | SelectFieldOptions
+  | TextareaFieldOptions
+
+// 入力型
+export interface CreateWIMFieldInput {
+  config_id: string
+  field_key: string
+  field_type: WIMFieldType
+  label: string
+  is_required?: boolean
+  is_visible?: boolean
+  sort_order?: number
+  options?: string | null
+}
+
+export interface UpdateWIMFieldInput {
+  field_key?: string
+  field_type?: WIMFieldType
+  label?: string
+  is_required?: boolean
+  is_visible?: boolean
+  sort_order?: number
+  options?: string | null
+}
