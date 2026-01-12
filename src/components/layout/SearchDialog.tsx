@@ -394,7 +394,7 @@ export function SearchButton({ hasThemeColor }: SearchButtonProps) {
         <Search className="h-5 w-5" />
         <span className="sr-only">検索</span>
       </Button>
-      <SearchDialog open={open} onOpenChange={setOpen} hasThemeColor={hasThemeColor} />
+      <SearchDialog open={open} onOpenChange={setOpen} />
     </>
   )
 }
