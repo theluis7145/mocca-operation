@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
-import { Menu, Bell, Settings, LogOut, Type, Users, Building2, BarChart3 } from 'lucide-react'
+import { Menu, Bell, Settings, LogOut, Type, Users, Building2, BarChart3, HelpCircle } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -174,6 +174,18 @@ export function HamburgerMenu({ unreadNotificationCount = 0, hasThemeColor = fal
           </div>
 
           <Separator />
+
+          {/* ヘルプ */}
+          <button
+            className="w-full flex items-center gap-3 py-2 hover:bg-accent rounded-lg px-2 transition-colors"
+            onClick={() => {
+              setOpen(false)
+              router.push('/help')
+            }}
+          >
+            <HelpCircle className="h-5 w-5" />
+            <span>ヘルプ</span>
+          </button>
 
           {/* 設定 */}
           <button
