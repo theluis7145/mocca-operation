@@ -571,19 +571,27 @@ export default function ManualEditPage() {
                 onChange={(e) => setGenre(e.target.value)}
                 placeholder="例：清掃、調理、接客など"
                 className="bg-background"
-                list="genre-suggestions-edit"
               />
               {existingGenres.length > 0 && (
-                <datalist id="genre-suggestions-edit">
-                  {existingGenres.map((g) => (
-                    <option key={g} value={g} />
-                  ))}
-                </datalist>
-              )}
-              {existingGenres.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  既存のジャンル: {existingGenres.join('、')}
-                </p>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground">既存のジャンルから選択:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {existingGenres.map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setGenre(g)}
+                        className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+                          genre === g
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background hover:bg-accent border-input'
+                        }`}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
             <div className="space-y-2">
